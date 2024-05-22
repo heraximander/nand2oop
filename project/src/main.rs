@@ -80,6 +80,26 @@ fn mux<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 3]) -> [ChipOutputType<'a
     [ChipOutputType::ChipOutput(or.get_out(alloc)[0])]
 }
 
+#[chip]
+fn demux<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 2]) -> [ChipOutputType<'a>; 2] {
+    let and1 = And::new(
+        alloc,
+        [Input::ChipInput(input[0]), Input::ChipInput(input[1])],
+    );
+    let not = Not::new(alloc, [Input::ChipInput(input[1])]);
+    let and2 = And::new(
+        alloc,
+        [
+            Input::ChipInput(input[0]),
+            Input::ChipOutput(not.get_out(alloc)[0]),
+        ],
+    );
+    [
+        ChipOutputType::ChipOutput(and2.get_out(alloc)[0]),
+        ChipOutputType::ChipOutput(and1.get_out(alloc)[0]),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use bumpalo::Bump;
@@ -137,6 +157,16 @@ mod tests {
         assert_eq!(machine.process([true, false, false]), [false]);
         assert_eq!(machine.process([false, true, false]), [true]);
         assert_eq!(machine.process([false, false, false]), [false]);
+    }
+
+    #[test]
+    fn demux_gate_has_correct_truth_table() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Demux::new);
+        assert_eq!(machine.process([true, true]), [false, true]);
+        assert_eq!(machine.process([true, false]), [true, false]);
+        assert_eq!(machine.process([false, true]), [false, false]);
+        assert_eq!(machine.process([false, false]), [false, false]);
     }
 }
 
