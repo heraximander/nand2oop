@@ -78,7 +78,7 @@ pub fn chip(_: TokenStream, item: TokenStream) -> TokenStream {
         impl<'a> hdl::SizedChip<'a, #return_size_literal> for #struct_name<'a> {
             // TODO: probably don't need to allocate this in the arena
             // can instead just return the struct rather than a pointer
-            fn get_out_sized(&'a self, alloc: &'a Bump) -> [&'a hdl::ChipOutputWrapper; #return_size_literal] {
+            fn get_out(&'a self, alloc: &'a Bump) -> [&'a hdl::ChipOutputWrapper; #return_size_literal] {
                 self.out.map(|out| hdl::ChipOutputWrapper::new(alloc, out, self))
             }
         }
@@ -92,8 +92,8 @@ pub fn chip(_: TokenStream, item: TokenStream) -> TokenStream {
                 #lit_name
             }
 
-            fn get_out(&'a self, alloc: &'a Bump) -> &'a[&hdl::ChipOutputWrapper] {
-                alloc.alloc(hdl::SizedChip::<#return_size_literal>::get_out_sized(self,alloc))
+            fn get_out_unsized(&'a self, alloc: &'a Bump) -> &'a[&hdl::ChipOutputWrapper] {
+                alloc.alloc(hdl::SizedChip::<#return_size_literal>::get_out(self,alloc))
             }
         }
     };
