@@ -307,6 +307,7 @@ pub enum Input<'a> {
     UserInput(&'a UserInput),
     ChipOutput(&'a ChipOutputWrapper<'a>),
     ChipInput(&'a ChipInput<'a>),
+    NandInput(&'a Nand<'a>)
 }
 
 impl Input<'_> {
@@ -315,6 +316,7 @@ impl Input<'_> {
             Input::UserInput(in_) => in_.value.get(),
             Input::ChipOutput(out) => out.inner.process(iteration),
             Input::ChipInput(in_) => in_.process(iteration),
+            Input::NandInput(nand) => nand.process(iteration),
         }
     }
 
@@ -323,6 +325,7 @@ impl Input<'_> {
             Input::UserInput(x) => x.graph(graph_map, path),
             Input::ChipOutput(x) => x.graph(graph_map, path),
             Input::ChipInput(x) => x.graph(graph_map, path),
+            Input::NandInput(x) => x.graph(graph_map, path),
         }
     }
 }

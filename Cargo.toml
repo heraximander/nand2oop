@@ -3,4 +3,4 @@ resolver = "2"
 
 members = [
     "hdl"
-, "hdl-macro", "hdl-macro-test"]
+, "hdl-macro", "hdl-macro-test", "project"]
