@@ -55,10 +55,12 @@ pub fn chip(_: TokenStream, item: TokenStream) -> TokenStream {
         #ast
         impl<'a> #struct_name<'a> {
             fn new(alloc: &'a bumpalo::Bump, inputs: [hdl::Input<'a>;#arity_lit]) -> &'a #struct_name<'a> {
-                let inner = #ident(alloc,inputs);
+                let chipinputs = inputs.map(|in_| ChipInput::new(&alloc, in_));
+                let inner = #ident(alloc,chipinputs);
+                let chipout = inner.map(|in_| ChipOutput::new(alloc, in_));
                 static COUNTER: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
                 alloc.alloc(#struct_name{
-                    out: inner,
+                    out: chipout,
                     identifier: COUNTER.fetch_add(1, core::sync::atomic::Ordering::Relaxed)
                 })
             }
