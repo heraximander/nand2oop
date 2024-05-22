@@ -60,13 +60,13 @@ fn xor<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 2]) -> [ChipOutputType<'a
 fn mux<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 3]) -> [ChipOutputType<'a>; 1] {
     let and1 = And::new(
         alloc,
-        [Input::ChipInput(input[0]), Input::ChipInput(input[2])],
+        [Input::ChipInput(input[1]), Input::ChipInput(input[2])],
     );
     let not = Not::new(alloc, [Input::ChipInput(input[2])]);
     let and2 = And::new(
         alloc,
         [
-            Input::ChipInput(input[1]),
+            Input::ChipInput(input[0]),
             Input::ChipOutput(not.get_out(alloc)[0]),
         ],
     );
@@ -151,11 +151,11 @@ mod tests {
         let mut machine = Machine::new(&alloc, Mux::new);
         assert_eq!(machine.process([true, true, true]), [true]);
         assert_eq!(machine.process([true, true, false]), [true]);
-        assert_eq!(machine.process([true, false, true]), [true]);
-        assert_eq!(machine.process([false, true, true]), [false]);
+        assert_eq!(machine.process([true, false, true]), [false]);
+        assert_eq!(machine.process([false, true, true]), [true]);
         assert_eq!(machine.process([false, false, true]), [false]);
-        assert_eq!(machine.process([true, false, false]), [false]);
-        assert_eq!(machine.process([false, true, false]), [true]);
+        assert_eq!(machine.process([true, false, false]), [true]);
+        assert_eq!(machine.process([false, true, false]), [false]);
         assert_eq!(machine.process([false, false, false]), [false]);
     }
 
