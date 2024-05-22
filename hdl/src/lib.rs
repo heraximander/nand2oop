@@ -25,11 +25,10 @@ mod tests {
     }
     fn sort_mermaid_graph(graph: &mut MermaidGraph) {
         graph.statements.sort();
-        for (_,child) in &mut graph.subgraphs {
+        for (_, child) in &mut graph.subgraphs {
             sort_mermaid_graph(child);
         }
     }
-
 
     #[test]
     fn mermaid_compiles_properly_to_text() {
@@ -108,10 +107,7 @@ end
         let out2 = ChipOutput::new(&alloc, ChipOutputType::ChipInput(cin1));
         let mout1 = Output::new(&ChipOutputWrapper::new(&alloc, &out1, &TestChip {}));
         let mout2 = Output::new(&ChipOutputWrapper::new(&alloc, &out2, &TestChip {}));
-        let mouts = [
-            mout1,
-            mout2,
-        ];
+        let mouts = [mout1, mout2];
         let mut mermaid_out = graph_outputs(&mouts);
 
         let mut expected = MermaidGraph {
@@ -206,7 +202,7 @@ end
                     ]),
                     name: "TestChip",
                     subgraphs: HashMap::new(),
-                    id: "1".into()
+                    id: "1".into(),
                 },
             )]),
         };
@@ -278,9 +274,7 @@ impl MermaidGraph {
             let right_label = statement.to.get_label();
             let left_name = statement.from.name;
             let right_name = statement.to.name;
-            res += &format!(
-                "\n{left_label}({left_name})-->{right_label}({right_name})"
-            );
+            res += &format!("\n{left_label}({left_name})-->{right_label}({right_name})");
         }
         res
     }
