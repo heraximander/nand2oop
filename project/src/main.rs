@@ -1,5 +1,7 @@
+use std::iter;
+
 use bumpalo::Bump;
-use hdl::{ChipInput, ChipOutput, ChipOutputType, Input, Nand, SizedChip};
+use hdl::{ChipInput, ChipOutput, ChipOutputType, Input, Nand, SizedChip, UserInput};
 use hdl_macro::chip;
 
 #[chip]
@@ -243,6 +245,20 @@ fn adder16<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 32]) -> [ChipOutputTy
         .unwrap_or_else(|_| panic!("output must be exactly half of input"))
 }
 
+#[chip]
+fn incrementer16<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 16]) -> [ChipOutputType<'a>; 16] {
+    let inputs = input.map(|in_| Input::ChipInput(in_));
+    let adder_inputs = iter::repeat_with(|| Input::UserInput(UserInput::from(alloc, false)))
+        .take(15)
+        .chain(iter::once(Input::UserInput(UserInput::from(alloc, true))))
+        .chain(inputs)
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap_or_else(|_| panic!("array must be length 16"));
+    let adder = Adder16::new(alloc, adder_inputs);
+    adder.get_out(alloc).map(|x| ChipOutputType::ChipOutput(x))
+}
+
 #[cfg(test)]
 mod tests {
     use bumpalo::Bump;
@@ -466,6 +482,16 @@ mod tests {
         let out = [true; 16];
         assert_eq!(machine.process(in_), out, "-3+2 != -1");
     }
+
+    #[test]
+    fn incrementer16_adds_just_one_to_input() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Incrementer16::new);
+
+        let mut out = [false; 16];
+        out[15] = true;
+        assert_eq!(machine.process([false; 16]), out, "0+1 != 1");
+    }
 }
 
 fn main() {
@@ -478,3 +504,4 @@ fn main() {
 //    1. At least add the names for inputs and outputs to the diagrams...
 //    2. Add an interactive version which hides the chip details until the user clicks on the chip
 // 3. Add muxn chip? Using generic constants to decide how large the outputs are
+// 4. Rename and refactor UserInput to be a general set-value Input
