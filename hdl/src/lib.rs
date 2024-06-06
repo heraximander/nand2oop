@@ -48,31 +48,52 @@ mod tests {
         }
 
         let alloc = Bump::new();
-        let in1 = Input::UserInput(UserInput::new(&alloc));
-        let in2 = Input::UserInput(UserInput::new(&alloc));
-        let cin1 = ChipInput::new(&alloc, in1);
-        let cin2 = ChipInput::new(&alloc, in2);
+        let in1 = UserInput::new(&alloc);
+        let win1 = Input::UserInput(in1);
+        let in2 = UserInput::new(&alloc);
+        let win2 = Input::UserInput(in2);
+        let cin1 = ChipInput::new(&alloc, win1);
+        let cin2 = ChipInput::new(&alloc, win2);
         let nand = Nand::new(&alloc, Input::ChipInput(&cin1), Input::ChipInput(&cin2));
-        let out1 = ChipOutput::new(&alloc, ChipOutputType::NandOutput(nand));
-        let out2 = ChipOutput::new(&alloc, ChipOutputType::ChipInput(cin1));
-        let mermaid_out = graph_outputs(&[
-            Output::new(&ChipOutputWrapper::new(&alloc, &out1, &TestChip {})),
-            Output::new(&ChipOutputWrapper::new(&alloc, &out2, &TestChip {})),
-        ]);
+        let cout1 = ChipOutput::new(&alloc, ChipOutputType::NandOutput(nand));
+        let cout2 = ChipOutput::new(&alloc, ChipOutputType::ChipInput(cin1));
+        let outs = [
+            Output::new(&ChipOutputWrapper::new(&alloc, &cout1, &TestChip {})),
+            Output::new(&ChipOutputWrapper::new(&alloc, &cout2, &TestChip {})),
+        ];
+        let mermaid_out = graph_outputs(&outs);
 
-        let expected = "```mermaid
+        let expected = format!(
+            "```mermaid
 graph TD
 subgraph 1 [TestChip]
-0IN(IN)-->1OUT(OUT)
-0IN(IN)-->0NAND(NAND)
-1IN(IN)-->0NAND(NAND)
-0NAND(NAND)-->0OUT(OUT)
+{}IN(IN)-->{}OUT(OUT)
+{}IN(IN)-->{}NAND(NAND)
+{}IN(IN)-->{}NAND(NAND)
+{}NAND(NAND)-->{}OUT(OUT)
 end
-0INPUT(INPUT)-->0IN(IN)
-1OUT(OUT)-->1OUTPUT(OUTPUT)
-1INPUT(INPUT)-->1IN(IN)
-0OUT(OUT)-->0OUTPUT(OUTPUT)
-```";
+{}INPUT(INPUT)-->{}IN(IN)
+{}OUT(OUT)-->{}OUTPUT(OUTPUT)
+{}INPUT(INPUT)-->{}IN(IN)
+{}OUT(OUT)-->{}OUTPUT(OUTPUT)
+```",
+            cin1.id,
+            cout2.id,
+            cin1.id,
+            nand.identifier,
+            cin2.id,
+            nand.identifier,
+            nand.identifier,
+            cout1.id,
+            in1.id,
+            cin1.id,
+            cout2.id,
+            outs[1].identifier,
+            in2.id,
+            cin2.id,
+            cout1.id,
+            outs[0].identifier
+        );
         let actual = mermaid_out.compile();
 
         assert_eq!(expected, actual);

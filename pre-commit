@@ -1,3 +1,5 @@
+set -e
+
 cargo test
 
 cargo fmt --check
