@@ -1,7 +1,5 @@
 use std::{
-    cell::Cell,
-    collections::{HashMap, HashSet},
-    sync::atomic::{AtomicU32, Ordering},
+    cell::Cell, collections::{HashMap, HashSet}, marker::PhantomData, sync::atomic::{AtomicU32, Ordering}
 };
 
 use bumpalo::Bump;
@@ -303,24 +301,38 @@ impl MermaidGraph {
 
 // FIXME: work out how to mark struct as non-threadsafe
 // maybe it's already ok - it's not Send, Clone or Copy
-pub struct Machine<'a, const NINPUT: usize, const NOUT: usize> {
+pub struct Machine<'a, TFam: StructuredInputFamily<NINPUT>, const NINPUT: usize, const NOUT: usize> {
     inputs: [&'a UserInput; NINPUT],
     outputs: [Output<'a>; NOUT],
     iteration: u8,
+    phantom_data: PhantomData<TFam>
 }
 
-impl<'a, const NINPUT: usize, const NOUT: usize> Machine<'a, NINPUT, NOUT> {
-    pub fn new<TChip: SizedChip<'a, NOUT>>(
+pub trait StructuredInput<T, const NINPUT: usize> {
+    fn map_from_flat(input: [T; NINPUT]) -> Self;
+    fn to_flat(&self) -> [T; NINPUT];
+}
+
+pub trait StructuredInputFamily< const N: usize> {
+    type StructuredInput<T: Copy>: StructuredInput<T,N>;
+}
+
+pub trait TypeGhost<T> {}
+
+impl<'a, TFam: StructuredInputFamily<NINPUT>, const NINPUT: usize, const NOUT: usize> Machine<'a, TFam, NINPUT, NOUT> {
+    pub fn new<TChip: SizedChip<'a, TFam, NOUT>>(
         alloc: &'a Bump,
-        new_fn: fn(&'a Bump, [Input<'a>; NINPUT]) -> &'a TChip,
+        new_fn: fn(&'a Bump, TFam::StructuredInput<Input<'a>>) -> &'a TChip,
     ) -> Self {
         let inputs = [0; NINPUT].map(|_| UserInput::new(&alloc));
-        let chip = new_fn(&alloc, inputs.map(|in_| Input::UserInput(in_)));
+        let input_struct = TFam::StructuredInput::map_from_flat(inputs.map(|in_| Input::UserInput(in_)));
+        let chip = new_fn(&alloc, input_struct);
         let outputs = chip.get_out(alloc).map(|out| Output::new(out));
         let machine = Machine {
             inputs,
             outputs,
             iteration: 0,
+            phantom_data: PhantomData
         };
         machine
     }
@@ -330,8 +342,9 @@ impl<'a, const NINPUT: usize, const NOUT: usize> Machine<'a, NINPUT, NOUT> {
         graph_map.compile()
     }
 
-    pub fn process(&mut self, input_vals: [bool; NINPUT]) -> [bool; NOUT] {
-        for (in_, val) in self.inputs.iter().zip(input_vals) {
+    pub fn process(&mut self, input: TFam::StructuredInput<bool>) -> [bool; NOUT] {
+        let flat_input = input.to_flat();
+        for (in_, val) in self.inputs.iter().zip(flat_input) {
             in_.set(val);
         }
         self.iteration += 1;
@@ -530,7 +543,7 @@ pub trait Chip<'a> {
     fn get_out_unsized(&'a self, alloc: &'a Bump) -> &'a [&ChipOutputWrapper];
 }
 
-pub trait SizedChip<'a, const NOUT: usize>: Chip<'a> {
+pub trait SizedChip<'a, TInputFam, const NOUT: usize>: Chip<'a> {
     fn get_out(&self, alloc: &'a Bump) -> [&'a ChipOutputWrapper; NOUT];
 }
 
