@@ -1,4 +1,7 @@
-use std::{array, iter};
+use std::{
+    array::{self, from_fn},
+    iter,
+};
 
 use bumpalo::Bump;
 use hdl::{
@@ -26,6 +29,24 @@ struct ArrayLen2<T> {
 #[derive(StructuredData, PartialEq, Debug)]
 struct ArrayLen16<T> {
     out: [T; 16],
+}
+
+#[derive(StructuredData, PartialEq, Debug)]
+struct BinaryArrayLen16<T> {
+    out1: [T; 16],
+    out2: [T; 16],
+}
+
+#[derive(StructuredData, PartialEq, Debug)]
+struct OctArrayLen16<T> {
+    out1: [T; 16],
+    out2: [T; 16],
+    out3: [T; 16],
+    out4: [T; 16],
+    out5: [T; 16],
+    out6: [T; 16],
+    out7: [T; 16],
+    out8: [T; 16],
 }
 
 #[chip]
@@ -182,6 +203,96 @@ fn mux16<'a>(
         .into()
     });
     ArrayLen16 { out }
+}
+
+#[chip]
+fn demux16<'a>(
+    alloc: &'a Bump,
+    in_: [&'a ChipInput<'a>; 16],
+    sel: &'a ChipInput<'a>,
+) -> BinaryArrayLen16<ChipOutputType<'a>> {
+    let out = in_.map(|elem| Demux::new(alloc, elem.into(), sel.into()).get_out(alloc));
+    let out1 = from_fn(|i| out[i].out1.into());
+    let out2 = from_fn(|i| out[i].out2.into());
+    BinaryArrayLen16 { out1, out2 }
+}
+
+#[chip]
+fn demux16x8<'a>(
+    alloc: &'a Bump,
+    in_: [&'a ChipInput<'a>; 16],
+    sel: [&'a ChipInput<'a>; 3],
+) -> OctArrayLen16<ChipOutputType<'a>> {
+    let demux1 = Demux16::new(alloc, in_.ainto(), sel[0].into());
+    let dmx1o = demux1.get_out(alloc);
+
+    let demux2 = Demux16::new(alloc, dmx1o.out1.ainto(), sel[1].into());
+    let demux3 = Demux16::new(alloc, dmx1o.out2.ainto(), sel[1].into());
+    let dmx2o = demux2.get_out(alloc);
+    let dmx3o = demux3.get_out(alloc);
+
+    let demux4 = Demux16::new(alloc, dmx2o.out1.ainto(), sel[2].into());
+    let demux5 = Demux16::new(alloc, dmx2o.out2.ainto(), sel[2].into());
+    let demux6 = Demux16::new(alloc, dmx3o.out1.ainto(), sel[2].into());
+    let demux7 = Demux16::new(alloc, dmx3o.out2.ainto(), sel[2].into());
+    let dmx4o = demux4.get_out(alloc);
+    let dmx5o = demux5.get_out(alloc);
+    let dmx6o = demux6.get_out(alloc);
+    let dmx7o = demux7.get_out(alloc);
+
+    OctArrayLen16 {
+        out1: dmx4o.out1.ainto(),
+        out2: dmx4o.out2.ainto(),
+        out3: dmx5o.out1.ainto(),
+        out4: dmx5o.out2.ainto(),
+        out5: dmx6o.out1.ainto(),
+        out6: dmx6o.out2.ainto(),
+        out7: dmx7o.out1.ainto(),
+        out8: dmx7o.out2.ainto(),
+    }
+}
+
+#[chip]
+fn mux16x8<'a>(
+    alloc: &'a Bump,
+    in1: [&'a ChipInput<'a>; 16],
+    in2: [&'a ChipInput<'a>; 16],
+    in3: [&'a ChipInput<'a>; 16],
+    in4: [&'a ChipInput<'a>; 16],
+    in5: [&'a ChipInput<'a>; 16],
+    in6: [&'a ChipInput<'a>; 16],
+    in7: [&'a ChipInput<'a>; 16],
+    in8: [&'a ChipInput<'a>; 16],
+    sel: [&'a ChipInput<'a>; 3],
+) -> ArrayLen16<ChipOutputType<'a>> {
+    let mux1 = Mux16::new(alloc, in1.ainto(), in2.ainto(), sel[2].into());
+    let mux2 = Mux16::new(alloc, in3.ainto(), in4.ainto(), sel[2].into());
+    let mux3 = Mux16::new(alloc, in5.ainto(), in6.ainto(), sel[2].into());
+    let mux4 = Mux16::new(alloc, in7.ainto(), in8.ainto(), sel[2].into());
+
+    let mux5 = Mux16::new(
+        alloc,
+        mux1.get_out(alloc).out.ainto(),
+        mux2.get_out(alloc).out.ainto(),
+        sel[1].into(),
+    );
+    let mux6 = Mux16::new(
+        alloc,
+        mux3.get_out(alloc).out.ainto(),
+        mux4.get_out(alloc).out.ainto(),
+        sel[1].into(),
+    );
+
+    let mux7 = Mux16::new(
+        alloc,
+        mux5.get_out(alloc).out.ainto(),
+        mux6.get_out(alloc).out.ainto(),
+        sel[0].into(),
+    );
+
+    ArrayLen16 {
+        out: mux7.get_out(alloc).out.ainto(),
+    }
 }
 
 #[chip]
@@ -1605,6 +1716,123 @@ mod tests {
             }),
             ArrayLen16 { out: [true; 16] }
         );
+        // ...
+    }
+
+    #[test]
+    fn demux16_gate_has_correct_truth_table() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Demux16::from);
+        assert_eq!(
+            machine.process(Demux16Inputs {
+                in_: [true; 16],
+                sel: true
+            }),
+            BinaryArrayLen16 {
+                out1: [false; 16],
+                out2: [true; 16]
+            }
+        );
+        assert_eq!(
+            machine.process(Demux16Inputs {
+                in_: [true; 16],
+                sel: false
+            }),
+            BinaryArrayLen16 {
+                out1: [true; 16],
+                out2: [false; 16]
+            }
+        );
+        // ...
+    }
+
+    #[test]
+    fn mux16x8_gate_has_correct_truth_table() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Mux16x8::from);
+        let out = machine.process(Mux16x8Inputs {
+            in1: [true; 16],
+            in2: [false; 16],
+            in3: [false; 16],
+            in4: [false; 16],
+            in5: [false; 16],
+            in6: [false; 16],
+            in7: [false; 16],
+            in8: [false; 16],
+            sel: [false, false, false],
+        });
+        assert_eq!(out.out, [true; 16]);
+
+        let out = machine.process(Mux16x8Inputs {
+            in1: [true; 16],
+            in2: [false; 16],
+            in3: [false; 16],
+            in4: [false; 16],
+            in5: [false; 16],
+            in6: [false; 16],
+            in7: [false; 16],
+            in8: [false; 16],
+            sel: [true, true, true],
+        });
+        assert_eq!(out.out, [false; 16]);
+
+        let out = machine.process(Mux16x8Inputs {
+            in1: [false; 16],
+            in2: [false; 16],
+            in3: [false; 16],
+            in4: [false; 16],
+            in5: [true; 16],
+            in6: [false; 16],
+            in7: [false; 16],
+            in8: [false; 16],
+            sel: [true, false, false],
+        });
+        assert_eq!(out.out, [true; 16]);
+
+        let out = machine.process(Mux16x8Inputs {
+            in1: [false; 16],
+            in2: [false; 16],
+            in3: [false; 16],
+            in4: [false; 16],
+            in5: [true; 16],
+            in6: [false; 16],
+            in7: [false; 16],
+            in8: [false; 16],
+            sel: [true, true, false],
+        });
+        assert_eq!(out.out, [false; 16]);
+
+        // ...
+    }
+
+    #[test]
+    fn demux16x8_gate_has_correct_truth_table() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Demux16x8::from);
+        let out = machine.process(Demux16x8Inputs {
+            in_: [true; 16],
+            sel: [true, true, true],
+        });
+        assert_eq!(out.out8, [true; 16]);
+        assert_eq!(out.out7, [false; 16]);
+        assert_eq!(out.out1, [false; 16]);
+
+        let out = machine.process(Demux16x8Inputs {
+            in_: [true; 16],
+            sel: [false, true, true],
+        });
+
+        assert_eq!(out.out4, [true; 16]);
+        assert_eq!(out.out8, [false; 16]);
+        assert_eq!(out.out3, [false; 16]);
+
+        let out = machine.process(Demux16x8Inputs {
+            in_: [true; 16],
+            sel: [false, false, false],
+        });
+
+        assert_eq!(out.out1, [true; 16]);
+        assert_eq!(out.out8, [false; 16]);
         // ...
     }
 
