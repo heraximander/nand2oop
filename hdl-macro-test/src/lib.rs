@@ -8,16 +8,13 @@ mod tests {
     #[test]
     fn when_a_chip_is_defined_it_can_be_processed_via_machine() {
         #[chip]
-        fn testchip<'a>(alloc: &'a Bump, input: [Input<'a>; 2]) -> [&'a ChipOutput<'a>;1] {
-            let cin1 = ChipInput::new(&alloc, input[0]);
-            let cin2 = ChipInput::new(&alloc, input[1]);
+        fn testchip<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 2]) -> [ChipOutputType<'a>;1] {
             let nand = Nand::new(
                 &alloc,
-                Input::ChipInput(&cin1),
-                Input::ChipInput(&cin2),
+                Input::ChipInput(input[0]),
+                Input::ChipInput(&input[1]),
             );
-            let out = ChipOutput::new(alloc, ChipOutputType::NandOutput(nand));
-            [out]
+            [ChipOutputType::NandOutput(nand)]
         }
 
         let alloc = Bump::new();
@@ -29,16 +26,13 @@ mod tests {
     #[test]
     fn when_a_chip_is_defined_it_can_be_graphed_via_machine() {
         #[chip]
-        fn testchip<'a>(alloc: &'a Bump, input: [Input<'a>; 2]) -> [&'a ChipOutput<'a>;1] {
-            let cin1 = ChipInput::new(&alloc, input[0]);
-            let cin2 = ChipInput::new(&alloc, input[1]);
+        fn testchip<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 2]) -> [ChipOutputType<'a>;1] {
             let nand = Nand::new(
                 &alloc,
-                Input::ChipInput(&cin1),
-                Input::ChipInput(&cin2),
+                Input::ChipInput(input[0]),
+                Input::ChipInput(input[1]),
             );
-            let out = ChipOutput::new(alloc, ChipOutputType::NandOutput(nand));
-            [out]
+            [ChipOutputType::NandOutput(nand)]
         }
 
         let alloc = Bump::new();
@@ -49,33 +43,27 @@ mod tests {
     #[test]
     fn when_a_nested_chip_is_defined_it_can_be_processed_via_machine() {
         #[chip]
-        fn testchip<'a>(alloc: &'a Bump, input: [Input<'a>; 2]) -> [&'a ChipOutput<'a>;1] {
-            let cin1 = ChipInput::new(&alloc, input[0]);
-            let cin2 = ChipInput::new(&alloc, input[1]);
+        fn testchip<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 2]) -> [ChipOutputType<'a>;1] {
             let nand = Nand::new(
                 &alloc,
-                Input::ChipInput(&cin1),
-                Input::ChipInput(&cin2),
+                Input::ChipInput(input[0]),
+                Input::ChipInput(input[1]),
             );
-            let out = ChipOutput::new(alloc, ChipOutputType::NandOutput(nand));
-            [out]
+            [ChipOutputType::NandOutput(nand)]
         }
 
         #[chip]
-        fn testchip2<'a>(alloc: &'a Bump, input: [Input<'a>; 2]) -> [&'a ChipOutput<'a>;2] {
-            let cin1 = ChipInput::new(&alloc, input[0]);
-            let cin2 = ChipInput::new(&alloc, input[1]);
-            let chip = Testchip::new(alloc, [Input::ChipInput(cin1), Input::ChipInput(cin2)]);
+        fn testchip2<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 2]) -> [ChipOutputType<'a>;2] {
+            let chip = Testchip::new(alloc, [Input::ChipInput(input[0]), Input::ChipInput(input[1])]);
             let nand = Nand::new(
                 &alloc,
-                Input::ChipInput(&cin1),
+                Input::ChipInput(input[0]),
                 Input::ChipOutput(chip.get_out_sized(alloc)[0]),
             );
-            let out = [
-                ChipOutput::new(alloc, ChipOutputType::NandOutput(nand)),
-                ChipOutput::new(alloc, ChipOutputType::ChipInput(cin2))
-            ];
-            out
+            [
+                ChipOutputType::NandOutput(nand),
+                ChipOutputType::ChipInput(input[1])
+            ]
         }
 
         let alloc = Bump::new();
