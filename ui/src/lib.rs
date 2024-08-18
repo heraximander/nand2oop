@@ -237,7 +237,7 @@ fn graph_output_wrapper(
     }
 
     // recursively graph the input components
-    let prev_node = match out.inner.out {
+    let prev_node = match out.inner.get_out() {
         ChipOutputType::ChipOutput(out) => graph_output_wrapper(
             out,
             &mut GraphInputs {
@@ -307,8 +307,9 @@ fn graph_nand(nand: &Nand<'_>, graph_inputs: &mut GraphInputs<'_>) -> MermaidNod
     }
     graph_inputs.node_set.insert(node.get_label());
 
+    let [in1, in2] = nand.get_inputs();
     let from_node_1 = graph_input(
-        nand.in1,
+        in1,
         &mut GraphInputs {
             graph_map: graph_inputs.graph_map,
             path: graph_inputs.path.clone(),
@@ -317,7 +318,7 @@ fn graph_nand(nand: &Nand<'_>, graph_inputs: &mut GraphInputs<'_>) -> MermaidNod
         },
     );
     let from_node_2 = graph_input(
-        nand.in2,
+        in2,
         &mut GraphInputs {
             graph_map: graph_inputs.graph_map,
             path: graph_inputs.path.clone(),

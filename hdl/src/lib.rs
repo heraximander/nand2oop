@@ -153,6 +153,7 @@ impl<'a> Into<Input<'a>> for &'a ChipInput<'a> {
     }
 }
 
+#[derive(Copy, Clone)]
 pub enum ChipOutputType<'a> {
     ChipOutput(&'a ChipOutputWrapper<'a>),
     NandOutput(&'a Nand<'a>),
@@ -160,7 +161,7 @@ pub enum ChipOutputType<'a> {
 }
 
 pub struct ChipOutput<'a> {
-    pub out: ChipOutputType<'a>,
+    out: Cell<Option<ChipOutputType<'a>>>,
     value: Cell<bool>,
     iteration: Cell<u8>,
     pub id: u32,
@@ -188,6 +189,17 @@ pub trait Chip<'a> {
     fn get_label(&self) -> &'static str;
 }
 
+pub trait DefaultChip<
+    'a,
+    TDataFam: StructuredDataFamily<NINPUT, NOUT>,
+    const NINPUT: usize,
+    const NOUT: usize,
+>: Chip<'a>
+{
+    fn new(alloc: &'a Bump) -> &mut Self;
+    fn set_inputs(&'a self, alloc: &'a Bump, input: TDataFam::StructuredInput<Input<'a>>);
+}
+
 // SizedChip requires knowledge of input and output sizes. If we folded this trait in
 // to Chip, then each node of the chip graph would need to know the sizes of the chips
 // feeding in to it. This gave me a lot of problems, and as we only need `::get_out()`
@@ -205,20 +217,36 @@ pub trait SizedChip<
 
 impl<'a> ChipOutput<'a> {
     pub fn new(alloc: &'a Bump, out: ChipOutputType<'a>) -> &'a Self {
+        ChipOutput::<'a>::new_from_option(alloc, Some(out))
+    }
+
+    pub fn new_from_option(alloc: &'a Bump, out: Option<ChipOutputType<'a>>) -> &'a Self {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         alloc.alloc(ChipOutput {
-            out,
+            out: Cell::new(out),
             iteration: Cell::new(0),
             value: Cell::new(false),
             id: COUNTER.fetch_add(1, Ordering::Relaxed),
         })
     }
 
+    pub fn set_out(&self, out: ChipOutputType<'a>) {
+        self.out.set(Some(out));
+    }
+
+    pub fn get_out(&self) -> ChipOutputType<'a> {
+        // we're fine to unwrap the below as we assume that all references
+        // are Some by the time the graph is processed. If not, that's because
+        // a user has been using APIs they shouldn't have (see create_subchip())
+        self.out.get().unwrap()
+    }
+
     fn process(&self, iteration: u8) -> bool {
         if self.iteration.get() == iteration {
             return self.value.get();
         };
-        let res = match self.out {
+
+        let res = match self.get_out() {
             ChipOutputType::ChipOutput(out) => out.inner.process(iteration),
             ChipOutputType::NandOutput(nand) => nand.process(iteration),
             ChipOutputType::ChipInput(in_) => in_.process(iteration),
@@ -240,41 +268,131 @@ impl<'a> ChipOutputWrapper<'a> {
 }
 
 pub struct Nand<'a> {
-    pub in1: Input<'a>,
-    pub in2: Input<'a>,
+    in1: Cell<Option<Input<'a>>>,
+    in2: Cell<Option<Input<'a>>>,
     iteration: Cell<u8>,
     value: Cell<bool>,
     pub identifier: u32,
 }
 
+pub struct NandInputs<T> {
+    pub in1: T,
+    pub in2: T,
+}
+
+impl<T> StructuredData<T, 2> for NandInputs<T> {
+    fn from_flat(input: [T; 2]) -> Self {
+        let [in1, in2] = input;
+        NandInputs { in1, in2 }
+    }
+
+    fn to_flat(self) -> [T; 2] {
+        [self.in1, self.in2]
+    }
+}
+
+pub struct NandOutputs<T> {
+    out: T,
+}
+
+impl<T> StructuredData<T, 1> for NandOutputs<T> {
+    fn from_flat(input: [T; 1]) -> Self {
+        let [out] = input;
+        NandOutputs { out }
+    }
+
+    fn to_flat(self) -> [T; 1] {
+        [self.out]
+    }
+}
+
 impl<'a> Nand<'a> {
     pub fn new(alloc: &'a Bump, in1: Input<'a>, in2: Input<'a>) -> &'a Self {
+        let nand: &mut Nand<'a> = DefaultChip::new(alloc);
+        nand.in1.set(Some(in1));
+        nand.in2.set(Some(in2));
+        nand
+    }
+
+    pub fn get_inputs(&self) -> [Input<'a>; 2] {
+        // note that we could get rid of these unwraps()
+        // an idea is to use a different struct, PartialNand, while building
+        // the partial chips, and then returning Nand only when the inputs
+        // are provided. This would however invalidate the previous memory
+        // references, so I've put this in the too hard basket for now and
+        // just trust this library to keep Nand gates with Some() inputs
+        [self.in1.get().unwrap(), self.in2.get().unwrap()]
+    }
+
+    fn process(&self, iteration: u8) -> bool {
+        let in1 = match self.in1.get() {
+            Some(x) => x,
+            // should never get here
+            None => panic!("NAND must have two inputs before processing"),
+        };
+        let in2 = match self.in2.get() {
+            Some(x) => x,
+            // should never get here
+            None => panic!("NAND must have two inputs before processing"),
+        };
+        if iteration == self.iteration.get() {
+            return self.value.get();
+        }
+        // we set the iteration first in case there's a circular reference
+        // then the reference returns the previous iteration value
+        // note that if this evaluator is modified to work concurrently
+        // this may be unsafe
+        self.iteration.set(iteration);
+        let in1 = in1.process(iteration);
+        let in2 = in2.process(iteration);
+        let res = !(in1 && in2);
+        self.value.set(res);
+        res
+    }
+}
+
+pub struct NandInputsFamily;
+
+impl StructuredDataFamily<2, 1> for NandInputsFamily {
+    type StructuredInput<T> = NandInputs<T>;
+    type StructuredOutput<T> = NandOutputs<T>;
+}
+
+impl<'a> Into<Input<'a>> for &'a Nand<'a> {
+    fn into(self) -> Input<'a> {
+        Input::NandInput(self)
+    }
+}
+
+impl<'a> Chip<'a> for Nand<'a> {
+    fn get_id(&self) -> String {
+        self.identifier.to_string()
+    }
+
+    fn get_label(&self) -> &'static str {
+        "NAND"
+    }
+}
+
+impl<'a> DefaultChip<'a, NandInputsFamily, 2, 1> for Nand<'a> {
+    fn new(alloc: &Bump) -> &mut Self {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         alloc.alloc(Nand {
-            in1,
-            in2,
+            in1: Cell::new(None),
+            in2: Cell::new(None),
             iteration: Cell::new(0),
             value: Cell::new(false),
             identifier: COUNTER.fetch_add(1, Ordering::Relaxed),
         })
     }
 
-    fn process(&self, iteration: u8) -> bool {
-        if iteration == self.iteration.get() {
-            return self.value.get();
-        }
-        let in1 = self.in1.process(iteration);
-        let in2 = self.in2.process(iteration);
-        let res = !(in1 && in2);
-        self.iteration.set(iteration);
-        self.value.set(res);
-        res
-    }
-}
-
-impl<'a> Into<Input<'a>> for &'a Nand<'a> {
-    fn into(self) -> Input<'a> {
-        Input::NandInput(self)
+    fn set_inputs(
+        &self,
+        _: &Bump,
+        input: <NandInputsFamily as StructuredDataFamily<2, 1>>::StructuredInput<Input<'a>>,
+    ) {
+        self.in1.set(Some(input.in1));
+        self.in2.set(Some(input.in2));
     }
 }
 

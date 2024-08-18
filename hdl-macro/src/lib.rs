@@ -70,6 +70,13 @@ pub fn chip(_: TokenStream, item: TokenStream) -> TokenStream {
         .iter()
         .map(|(arg_name, _)| quote!(inputs.#arg_name))
         .collect::<Punctuated<_, Comma>>();
+    let mapped_struct_inputs = input_name_to_type
+        .iter()
+        .map(|(arg_name, ty)| match ty {
+            ArgType::Input => quote! {ChipInput::new(&alloc, inputs.#arg_name) },
+            ArgType::InputArray(_) => quote! {inputs.#arg_name.map(|x| ChipInput::new(&alloc, x)) },
+        })
+        .collect::<Punctuated<_, Comma>>();
     let inputs = input_name_to_type
         .iter()
         .map(|(arg_name, arg_type)| match arg_type {
@@ -151,9 +158,13 @@ pub fn chip(_: TokenStream, item: TokenStream) -> TokenStream {
             fn new(alloc: &'a bumpalo::Bump, #function_args) -> &'a #struct_name<'a> {
                 let inner = #ident(alloc,#function_params);
                 let chipout = hdl::StructuredData::to_flat(inner).map(|in_| ChipOutput::new(alloc, in_));
+                #struct_name::<'a>::from_output(alloc, chipout)
+            }
+
+            fn from_output(alloc: &'a Bump, out: [&'a hdl::ChipOutput<'a>; {#struct_outputs_type::<bool/* type doesn't matter */>::get_arity()}]) -> &'a mut Self {
                 static COUNTER: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
                 alloc.alloc(#struct_name{
-                    out: chipout,
+                    out,
                     identifier: COUNTER.fetch_add(1, core::sync::atomic::Ordering::Relaxed)
                 })
             }
@@ -165,6 +176,21 @@ pub fn chip(_: TokenStream, item: TokenStream) -> TokenStream {
             fn get_out(&'a self, alloc: &'a Bump) -> #struct_outputs_type<&'a hdl::ChipOutputWrapper> {
                 let flat_out = self.out.map(|out| hdl::ChipOutputWrapper::new(alloc, out, self));
                 hdl::StructuredData::from_flat(flat_out)
+            }
+        }
+
+        impl<'a> hdl::DefaultChip<'a,#struct_inputs_name_family, #arity, {#struct_outputs_type::<bool/* type doesn't matter */>::get_arity()}> for #struct_name<'a> {
+            fn new(alloc: &'a Bump) -> &mut Self {
+                #struct_name::<'a>::from_output(alloc, core::array::from_fn(|_| ChipOutput::new_from_option(alloc, Option::None)))
+            }
+
+            fn set_inputs(&'a self, alloc: &'a Bump, inputs: <#struct_inputs_name_family as hdl::StructuredDataFamily<#arity, {#struct_outputs_type::<bool/* type doesn't matter */>::get_arity()}>>::StructuredInput<Input<'a>>) {
+                let inner = #ident(alloc,#mapped_struct_inputs);
+                let outputs = hdl::StructuredData::to_flat(inner);
+
+                for (i,output) in outputs.into_iter().enumerate() {
+                    self.out[i].set_out(output);
+                }
             }
         }
 
