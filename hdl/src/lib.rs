@@ -369,9 +369,13 @@ pub struct UserInput {
 
 impl UserInput {
     pub fn new(alloc: &Bump) -> &Self {
+        Self::from(alloc, false)
+    }
+
+    pub fn from(alloc: &Bump, val: bool) -> &Self {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         alloc.alloc(UserInput {
-            value: Cell::new(false),
+            value: Cell::new(val),
             id: COUNTER.fetch_add(1, Ordering::Relaxed),
         })
     }
