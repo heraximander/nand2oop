@@ -393,7 +393,7 @@ fn alu<'a>(
 }
 
 #[derive(StructuredData, PartialEq, Debug)]
-struct SRLatchOutput<T> {
+struct LatchOutput<T> {
     q: T,
     nq: T,
 }
@@ -403,7 +403,7 @@ fn srlatch<'a>(
     alloc: &'a Bump,
     s: &'a ChipInput<'a>,
     r: &'a ChipInput<'a>,
-) -> SRLatchOutput<ChipOutputType<'a>> {
+) -> LatchOutput<ChipOutputType<'a>> {
     let (cross_nand_1, cross_nand_2): (&Nand, &Nand) = create_subchip(
         alloc,
         &|(nandchip,)| NandInputs {
@@ -416,9 +416,48 @@ fn srlatch<'a>(
         },
     );
 
-    SRLatchOutput {
+    LatchOutput {
         q: cross_nand_1.into(),
         nq: cross_nand_2.into(),
+    }
+}
+
+#[chip]
+fn dlatch<'a>(
+    alloc: &'a Bump,
+    data: &'a ChipInput<'a>,
+    enable: &'a ChipInput<'a>,
+) -> LatchOutput<ChipOutputType<'a>> {
+    let notd = Not::new(alloc, data.into());
+    let nand1 = Nand::new(alloc, data.into(), enable.into());
+    let nand2 = Nand::new(alloc, notd.get_out(alloc).out.into(), enable.into());
+    let srlatch = Srlatch::new(alloc, nand1.into(), nand2.into());
+
+    let srout = srlatch.get_out(alloc);
+    LatchOutput {
+        q: srout.q.into(),
+        nq: srout.nq.into(),
+    }
+}
+
+#[chip]
+fn dflipflop<'a>(
+    alloc: &'a Bump,
+    data: &'a ChipInput<'a>,
+    clock: &'a ChipInput<'a>,
+) -> LatchOutput<ChipOutputType<'a>> {
+    let invclock = Not::new(alloc, clock.into());
+    let latch1 = Dlatch::new(alloc, data.into(), clock.into());
+    let latch2 = Dlatch::new(
+        alloc,
+        latch1.get_out(alloc).q.into(),
+        invclock.get_out(alloc).out.into(),
+    );
+
+    let latch2out = latch2.get_out(alloc);
+    LatchOutput {
+        q: latch2out.q.into(),
+        nq: latch2out.nq.into(),
     }
 }
 
@@ -428,6 +467,69 @@ mod tests {
     use hdl::Machine;
 
     use crate::*;
+
+    #[test]
+    fn dflipflop_has_correct_truth_table() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Dflipflop::from);
+        let res = machine.process(DflipflopInputs {
+            data: true,
+            clock: true,
+        });
+        assert_eq!(res.q, false, "q should not transition until a clock tick ");
+        let res = machine.process(DflipflopInputs {
+            data: false,
+            clock: false,
+        });
+        assert_eq!(res.q, true, "data should transition on a clock tick");
+        let res = machine.process(DflipflopInputs {
+            data: false,
+            clock: false,
+        });
+        assert_eq!(res.q, true, "data should not transition until a clock tick");
+        let res = machine.process(DflipflopInputs {
+            data: false,
+            clock: true,
+        });
+        assert_eq!(
+            res.q, true,
+            "data should not transition until a clock tick after it was changed"
+        );
+        let res = machine.process(DflipflopInputs {
+            data: false,
+            clock: false,
+        });
+        assert_eq!(res.q, false, "data should transition on a clock tick");
+        let res = machine.process(DflipflopInputs {
+            data: false,
+            clock: false,
+        });
+        assert_eq!(
+            res.q, false,
+            "data should not transition until a clock tick"
+        );
+    }
+
+    #[test]
+    fn dlatch_has_correct_truth_table() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Dlatch::from);
+        let res = machine.process(DlatchInputs {
+            data: true,
+            enable: true,
+        });
+        assert_eq!(res.q, true);
+        let res = machine.process(DlatchInputs {
+            data: false,
+            enable: false,
+        });
+        assert_eq!(res.q, true);
+        let res = machine.process(DlatchInputs {
+            data: false,
+            enable: true,
+        });
+        assert_eq!(res.q, false);
+    }
 
     #[test]
     fn srlatch_has_correct_truth_table() {
@@ -1676,6 +1778,6 @@ mod tests {
 
 fn main() {
     let alloc = Bump::new();
-    let machine = Machine::new(&alloc, Srlatch::from);
+    let machine = Machine::new(&alloc, Dflipflop::from);
     ui::start_interactive_server(&machine, 3000);
 }
