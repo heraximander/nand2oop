@@ -43,3 +43,6 @@ fn mux16x8<'a>(
     ...
 }
 ```
+
+This would massively reduce the amount of boilerplate in some areas, most
+notably in the RAM chip hierarchical constructions.

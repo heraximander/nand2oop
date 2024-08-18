@@ -22,6 +22,26 @@ struct BinaryChipOutput<T> {
 }
 
 #[derive(StructuredData, PartialEq, Debug)]
+struct QuadChipOutput<T> {
+    out1: T,
+    out2: T,
+    out3: T,
+    out4: T,
+}
+
+#[derive(StructuredData, PartialEq, Debug)]
+struct OctChipOutput<T> {
+    out1: T,
+    out2: T,
+    out3: T,
+    out4: T,
+    out5: T,
+    out6: T,
+    out7: T,
+    out8: T,
+}
+
+#[derive(StructuredData, PartialEq, Debug)]
 struct ArrayLen2<T> {
     out: [T; 2],
 }
@@ -218,6 +238,63 @@ fn demux16<'a>(
 }
 
 #[chip]
+fn demux1x8<'a>(
+    alloc: &'a Bump,
+    in_: &'a ChipInput<'a>,
+    sel: [&'a ChipInput<'a>; 3],
+) -> OctChipOutput<ChipOutputType<'a>> {
+    let demux1 = Demux::new(alloc, in_.into(), sel[0].into());
+    let dmx1o = demux1.get_out(alloc);
+
+    let demux2 = Demux::new(alloc, dmx1o.out1.into(), sel[1].into());
+    let demux3 = Demux::new(alloc, dmx1o.out2.into(), sel[1].into());
+    let dmx2o = demux2.get_out(alloc);
+    let dmx3o = demux3.get_out(alloc);
+
+    let demux4 = Demux::new(alloc, dmx2o.out1.into(), sel[2].into());
+    let demux5 = Demux::new(alloc, dmx2o.out2.into(), sel[2].into());
+    let demux6 = Demux::new(alloc, dmx3o.out1.into(), sel[2].into());
+    let demux7 = Demux::new(alloc, dmx3o.out2.into(), sel[2].into());
+    let dmx4o = demux4.get_out(alloc);
+    let dmx5o = demux5.get_out(alloc);
+    let dmx6o = demux6.get_out(alloc);
+    let dmx7o = demux7.get_out(alloc);
+
+    OctChipOutput {
+        out1: dmx4o.out1.into(),
+        out2: dmx4o.out2.into(),
+        out3: dmx5o.out1.into(),
+        out4: dmx5o.out2.into(),
+        out5: dmx6o.out1.into(),
+        out6: dmx6o.out2.into(),
+        out7: dmx7o.out1.into(),
+        out8: dmx7o.out2.into(),
+    }
+}
+
+#[chip]
+fn demux1x4<'a>(
+    alloc: &'a Bump,
+    in_: &'a ChipInput<'a>,
+    sel: [&'a ChipInput<'a>; 2],
+) -> QuadChipOutput<ChipOutputType<'a>> {
+    let demux1 = Demux::new(alloc, in_.into(), sel[0].into());
+    let dmx1o = demux1.get_out(alloc);
+
+    let demux2 = Demux::new(alloc, dmx1o.out1.into(), sel[1].into());
+    let demux3 = Demux::new(alloc, dmx1o.out2.into(), sel[1].into());
+    let dmx2o = demux2.get_out(alloc);
+    let dmx3o = demux3.get_out(alloc);
+
+    QuadChipOutput {
+        out1: dmx2o.out1.into(),
+        out2: dmx2o.out2.into(),
+        out3: dmx3o.out1.into(),
+        out4: dmx3o.out2.into(),
+    }
+}
+
+#[chip]
 fn demux16x8<'a>(
     alloc: &'a Bump,
     in_: [&'a ChipInput<'a>; 16],
@@ -292,6 +369,30 @@ fn mux16x8<'a>(
 
     ArrayLen16 {
         out: mux7.get_out(alloc).out.ainto(),
+    }
+}
+
+#[chip]
+fn mux16x4<'a>(
+    alloc: &'a Bump,
+    in1: [&'a ChipInput<'a>; 16],
+    in2: [&'a ChipInput<'a>; 16],
+    in3: [&'a ChipInput<'a>; 16],
+    in4: [&'a ChipInput<'a>; 16],
+    sel: [&'a ChipInput<'a>; 2],
+) -> ArrayLen16<ChipOutputType<'a>> {
+    let mux1 = Mux16::new(alloc, in1.ainto(), in2.ainto(), sel[1].into());
+    let mux2 = Mux16::new(alloc, in3.ainto(), in4.ainto(), sel[1].into());
+
+    let mux3 = Mux16::new(
+        alloc,
+        mux1.get_out(alloc).out.ainto(),
+        mux2.get_out(alloc).out.ainto(),
+        sel[0].into(),
+    );
+
+    ArrayLen16 {
+        out: mux3.get_out(alloc).out.ainto(),
     }
 }
 
@@ -996,6 +1097,153 @@ mod tests {
     fn number_to_bool_array_works_as_expected() {
         let num = ntb(5);
         assert_eq!(num, [true, false, true]);
+    }
+
+    #[test]
+    fn ram16k_when_a_value_is_stored_it_can_be_retrieved_again() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Ram512::from);
+        let number = ntb(1092);
+        let out = machine.process(Ram512Inputs {
+            in_: number,
+            address: ntb(13987),
+            load: true,
+            clock: true,
+        }); // tick
+        assert_eq!(out.out, [false; 16]);
+        let out = machine.process(Ram512Inputs {
+            in_: [false; 16],
+            address: ntb(13987),
+            load: false,
+            clock: false,
+        }); // tock
+        assert_eq!(out.out, number);
+    }
+
+    #[test]
+    fn ram4k_when_a_value_is_stored_it_can_be_retrieved_again() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Ram512::from);
+        let number = ntb(1092);
+        let out = machine.process(Ram512Inputs {
+            in_: number,
+            address: ntb(2941),
+            load: true,
+            clock: true,
+        }); // tick
+        assert_eq!(out.out, [false; 16]);
+        let out = machine.process(Ram512Inputs {
+            in_: [false; 16],
+            address: ntb(2941),
+            load: false,
+            clock: false,
+        }); // tock
+        assert_eq!(out.out, number);
+    }
+
+    #[test]
+    fn ram512_when_a_value_is_stored_it_can_be_retrieved_again() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Ram512::from);
+        let number = ntb(1092);
+        let out = machine.process(Ram512Inputs {
+            in_: number,
+            address: ntb(132),
+            load: true,
+            clock: true,
+        }); // tick
+        assert_eq!(out.out, [false; 16]);
+        let out = machine.process(Ram512Inputs {
+            in_: [false; 16],
+            address: ntb(132),
+            load: false,
+            clock: false,
+        }); // tock
+        assert_eq!(out.out, number);
+    }
+
+    #[test]
+    fn ram64_when_a_value_is_stored_it_is_stored_in_only_one_place() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Ram64::from);
+        let number = ntb(1092);
+        let out = machine.process(Ram64Inputs {
+            in_: number,
+            address: ntb(18),
+            load: true,
+            clock: true,
+        }); // tick
+        assert_eq!(out.out, [false; 16]);
+        let out = machine.process(Ram64Inputs {
+            in_: [false; 16],
+            address: ntb(18),
+            load: false,
+            clock: false,
+        }); // tock
+        assert_eq!(out.out, number);
+
+        for i in 0..64 {
+            if i == 18 {
+                continue;
+            }
+            let out = machine.process(Ram64Inputs {
+                in_: [false; 16],
+                address: ntb(i),
+                load: false,
+                clock: false,
+            }); // tock
+            assert_eq!(out.out, [false; 16]);
+        }
+    }
+
+    #[test]
+    fn ram8_has_correct_truth_table() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Ram8::from);
+        let num1 = ntb(4321);
+        let num2 = ntb(1234);
+        let out = machine.process(Ram8Inputs {
+            in_: num1,
+            address: ntb(0),
+            load: true,
+            clock: true,
+        }); // tick
+        assert_eq!(out.out, ntb(0));
+        let out = machine.process(Ram8Inputs {
+            in_: num1,
+            address: ntb(0),
+            load: true,
+            clock: false,
+        }); // tock
+        assert_eq!(out.out, num1);
+        let out = machine.process(Ram8Inputs {
+            in_: num2,
+            address: ntb(2),
+            load: true,
+            clock: true,
+        }); // tick
+        assert_eq!(out.out, ntb(0));
+        let out = machine.process(Ram8Inputs {
+            in_: ntb(0),
+            address: ntb(2),
+            load: true,
+            clock: false,
+        }); // tock
+        assert_eq!(out.out, num2);
+        let out = machine.process(Ram8Inputs {
+            in_: num1,
+            address: ntb(0),
+            load: false,
+            clock: true,
+        }); // tick
+        assert_eq!(out.out, num1);
+        let out = machine.process(Ram8Inputs {
+            in_: num1,
+            address: ntb(2),
+            load: false,
+            clock: false,
+        }); // tock
+        assert_eq!(out.out, num2);
     }
 
     #[test]
