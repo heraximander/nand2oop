@@ -165,6 +165,84 @@ fn andmult4<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 4]) -> [ChipOutputTy
     [ChipOutputType::ChipOutput(final_output)]
 }
 
+#[chip]
+fn halfadder<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 2]) -> [ChipOutputType<'a>; 2] {
+    let sum_bit = Xor::new(
+        alloc,
+        [Input::ChipInput(input[0]), Input::ChipInput(input[1])],
+    );
+    let carry_bit = And::new(
+        alloc,
+        [Input::ChipInput(input[0]), Input::ChipInput(input[1])],
+    );
+    [
+        ChipOutputType::ChipOutput(carry_bit.get_out(alloc)[0]),
+        ChipOutputType::ChipOutput(sum_bit.get_out(alloc)[0]),
+    ]
+}
+
+#[chip]
+fn fulladder<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 3]) -> [ChipOutputType<'a>; 2] {
+    let first_hadder = Halfadder::new(
+        alloc,
+        [Input::ChipInput(input[0]), Input::ChipInput(input[1])],
+    );
+    let second_hadder = Halfadder::new(
+        alloc,
+        [
+            Input::ChipInput(input[2]),
+            Input::ChipOutput(first_hadder.get_out(alloc)[1]),
+        ],
+    );
+    let carry_or = Or::new(
+        alloc,
+        [
+            Input::ChipOutput(first_hadder.get_out(alloc)[0]),
+            Input::ChipOutput(second_hadder.get_out(alloc)[0]),
+        ],
+    );
+    [
+        ChipOutputType::ChipOutput(carry_or.get_out(alloc)[0]),
+        ChipOutputType::ChipOutput(second_hadder.get_out(alloc)[1]),
+    ]
+}
+
+#[chip]
+fn adder16<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 32]) -> [ChipOutputType<'a>; 16] {
+    let fnum = &input[..16];
+    let snum = &input[16..];
+
+    let lsb = Halfadder::new(
+        alloc,
+        [Input::ChipInput(fnum[15]), Input::ChipInput(snum[15])],
+    );
+    let zipin = fnum[..15]
+        .iter()
+        .zip(&snum[..15])
+        .rev()
+        .fold(vec![lsb.get_out(alloc)], |mut acc, x| {
+            let prev_carry = acc.last().unwrap()[0];
+            let adder = Fulladder::new(
+                alloc,
+                [
+                    Input::ChipOutput(prev_carry),
+                    Input::ChipInput(x.0),
+                    Input::ChipInput(x.1),
+                ],
+            );
+            acc.push(adder.get_out(alloc));
+            acc
+        })
+        .iter()
+        .map(|out| ChipOutputType::ChipOutput(out[1]))
+        .rev()
+        .collect::<Vec<_>>();
+
+    zipin
+        .try_into()
+        .unwrap_or_else(|_| panic!("output must be exactly half of input"))
+}
+
 #[cfg(test)]
 mod tests {
     use bumpalo::Bump;
@@ -302,6 +380,91 @@ mod tests {
         assert_eq!(machine.process([true, true, false, true]), [false]);
         assert_eq!(machine.process([true, true, true, false]), [false]);
         // ...
+    }
+
+    #[test]
+    fn halfadder_chip_has_correct_truth_table() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Halfadder::new);
+        assert_eq!(machine.process([false, false]), [false, false]);
+        assert_eq!(machine.process([false, true]), [false, true]);
+        assert_eq!(machine.process([true, false]), [false, true]);
+        assert_eq!(machine.process([true, true]), [true, false]);
+    }
+
+    #[test]
+    fn fulladder_chip_has_correct_truth_table() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Fulladder::new);
+
+        assert_eq!(machine.process([false, false, false]), [false, false]);
+        assert_eq!(machine.process([false, false, true]), [false, true]);
+        assert_eq!(machine.process([false, true, false]), [false, true]);
+        assert_eq!(machine.process([true, false, false]), [false, true]);
+        assert_eq!(machine.process([false, true, true]), [true, false]);
+        assert_eq!(machine.process([true, false, true]), [true, false]);
+        assert_eq!(machine.process([true, true, false]), [true, false]);
+        assert_eq!(machine.process([true, true, true]), [true, true]);
+    }
+
+    #[test]
+    fn adder16_chip_has_correct_partial_truth_table() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Adder16::new);
+
+        assert_eq!(machine.process([false; 32]), [false; 16], "0+0 != 0");
+
+        // check LSB and MSB values are represented
+        let mut in_ = [false; 32];
+        let in1 = &mut in_[..16];
+        in1[15] = true;
+        let in2 = &mut in_[16..];
+        in2[0] = true;
+        let mut out = [false; 16];
+        out[0] = true;
+        out[15] = true;
+        assert_eq!(machine.process(in_), out, "1+32768 != 32769");
+
+        // check halfadder carry
+        let mut in_ = [false; 32];
+        let in1 = &mut in_[..16];
+        in1[15] = true;
+        let in2 = &mut in_[16..];
+        in2[15] = true;
+        let mut out = [false; 16];
+        out[15 - 1] = true;
+        assert_eq!(machine.process(in_), out, "1+1 != 2");
+
+        // check fulladder carry
+        let mut in_ = [false; 32];
+        let in1 = &mut in_[..16];
+        in1[14] = true;
+        in1[15] = true;
+        let in2 = &mut in_[16..];
+        in2[14] = true;
+        in2[15] = true;
+        let mut out = [false; 16];
+        out[14] = true;
+        out[13] = true;
+        assert_eq!(machine.process(in_), out, "3+3 != 6");
+
+        // check overflow over at MSB
+        let in_ = [true; 32];
+        let mut out = [true; 16];
+        out[15] = false;
+        assert_eq!(machine.process(in_), out, "1+1 != 2");
+
+        // check two's complement
+        let mut in_ = [true; 32];
+        let in1 = &mut in_[..16];
+        in1[14] = false;
+        let in2 = &mut in_[16..];
+        for i in 0..16 {
+            in2[i] = false;
+        }
+        in2[14] = true;
+        let out = [true; 16];
+        assert_eq!(machine.process(in_), out, "-3+2 != -1");
     }
 }
 
