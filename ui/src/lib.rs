@@ -1,4 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    io::{BufRead, BufReader, Write},
+    net::{TcpListener, TcpStream},
+};
 
 use hdl::{
     ChipInput, ChipOutputType, ChipOutputWrapper, Input, Machine, Nand, Output,
@@ -53,9 +57,8 @@ impl MermaidGraph {
     }
 
     pub fn compile(&self) -> String {
-        let mut res = "```mermaid\ngraph TD".to_owned();
+        let mut res = "graph TD".to_owned();
         res += &self.compile_subgraph();
-        res += "\n```";
         res
     }
 
@@ -91,7 +94,7 @@ pub fn graph_machine<
     const NINPUT: usize,
     const NOUT: usize,
 >(
-    machine: Machine<'a, TFam, NINPUT, NOUT>,
+    machine: &Machine<'a, TFam, NINPUT, NOUT>,
     show_chips: HashSet<String>,
 ) -> MermaidGraph {
     graph_outputs(&machine.outputs, show_chips)
@@ -113,13 +116,6 @@ fn graph_outputs(outs: &[Output], show_chips: HashSet<String>) -> MermaidGraph {
     }
     graph_map
 }
-
-/*
-Here's the plan:
-1. If _all_ of the chips in _path_ are in show_chips, then render the chip
-2. If all but the final path entry is in show_chips, render inputs and outputs
-3. Otherwise _do not render_ the node
- */
 
 fn graph_output(out: &Output<'_>, graph_inputs: &mut GraphInputs<'_>) {
     let node = graph_output_wrapper(out.output, graph_inputs);
@@ -349,9 +345,114 @@ fn graph_nand(nand: &Nand<'_>, graph_inputs: &mut GraphInputs<'_>) -> MermaidNod
     node
 }
 
+pub fn start_interactive_server<
+    'a,
+    TFam: StructuredDataFamily<NINPUT, NOUT>,
+    const NINPUT: usize,
+    const NOUT: usize,
+>(
+    machine: &Machine<'a, TFam, NINPUT, NOUT>,
+    port: u16,
+) {
+    let listener = TcpListener::bind(format!("127.0.0.1:{port}")).unwrap();
+
+    for stream in listener.incoming() {
+        let stream = stream.unwrap();
+
+        handle_connection(stream, machine);
+    }
+}
+
+fn handle_connection<
+    'a,
+    TFam: StructuredDataFamily<NINPUT, NOUT>,
+    const NINPUT: usize,
+    const NOUT: usize,
+>(
+    mut stream: TcpStream,
+    machine: &Machine<'a, TFam, NINPUT, NOUT>,
+) {
+    let buf_reader = BufReader::new(&mut stream);
+    let lines = buf_reader
+        .lines()
+        .map(|elem| elem.unwrap())
+        .take_while(|line| !line.is_empty())
+        .collect();
+    let graph_function = |show_chips| graph_machine(machine, show_chips);
+    let response = match get_response(lines, graph_function) {
+        Ok(s) => format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+            s.len(),
+            s
+        ),
+        Err(_) => "HTTP/1.1 404 NOK\r\n\r\n".into(),
+    };
+    stream.write_all(response.as_bytes()).unwrap();
+}
+
+const HTTP_RESPONSE_TEMPLATE: &str = include_str!("../http/index.html");
+fn get_response<'a, F: FnOnce(HashSet<String>) -> MermaidGraph>(
+    lines: Vec<String>,
+    graph_function: F,
+) -> Result<String, ()> {
+    let http_line = match lines.iter().find(|line| line.starts_with("GET")) {
+        Some(s) => Ok(s),
+        None => Err(()),
+    }?;
+
+    let is_get = http_line.starts_with("GET");
+    if !is_get {
+        return Err(());
+    }
+
+    let expanded = http_line
+        .split_once("?")
+        .and_then(|(_, post_params)| post_params.split_once(" "))
+        .and_then(|(params, _)| Some(params.split("&")))
+        .and_then(|mut params_list| params_list.find(|param| param.starts_with("expanded")))
+        .and_then(|expanded_param| Some(expanded_param.replace("expanded=", "")))
+        .and_then(|expanded| {
+            Some(
+                expanded
+                    .split(",")
+                    .filter(|e| !e.is_empty())
+                    .map(String::from)
+                    .collect::<Vec<_>>(),
+            )
+        });
+    let show_chips = match expanded {
+        Some(e) => HashSet::from_iter(e.into_iter()),
+        None => HashSet::new(),
+    };
+
+    let graph = graph_function(show_chips);
+    let chip_ids = get_subgraph_ids(&graph);
+
+    Ok(HTTP_RESPONSE_TEMPLATE
+        .replace("{REPLACE_GRAPH}", &graph.compile())
+        .replace(
+            "{REPLACE_CHIP_IDS}",
+            &chip_ids
+                .iter()
+                .fold(String::new(), |acc, elem| format!("{}\"{}\",", acc, elem)),
+        ))
+}
+
+fn get_subgraph_ids<'a>(graph: &'a MermaidGraph) -> HashSet<&'a str> {
+    graph
+        .subgraphs
+        .iter()
+        .flat_map(|(k, v)| {
+            let mut names = get_subgraph_ids(v);
+            names.insert(k);
+            names
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use std::{cmp::Ordering, collections::HashMap};
+    use std::{cmp::Ordering, collections::HashMap, vec};
 
     use bumpalo::Bump;
     use hdl::{Chip, ChipInput, ChipOutput, Input, Output};
@@ -391,6 +492,58 @@ mod tests {
     }
 
     #[test]
+    fn when_a_request_with_no_query_params_is_passed_in_get_response_returns_success_response_with_internal_implementation_hidden(
+    ) {
+        let lines = vec!["GET /".into()];
+        let resp = get_response(lines, |show_chips| {
+            assert_eq!(show_chips, HashSet::new());
+            MermaidGraph {
+                statements: vec![],
+                name: "",
+                id: "".into(),
+                subgraphs: HashMap::from([(
+                    "chip1".into(),
+                    MermaidGraph {
+                        statements: vec![],
+                        name: "",
+                        id: "".into(),
+                        subgraphs: HashMap::new(),
+                    },
+                )]),
+            }
+        })
+        .expect("response not valid");
+        assert!(
+            resp.contains("[\"chip1\",]"),
+            "event listener not defined for visible chips"
+        );
+    }
+
+    #[test]
+    fn when_a_request_with_some_query_params_is_passed_in_get_response_returns_success_response_with_internal_implementation_shown(
+    ) {
+        let lines = vec!["GET /?expanded=chip1, HTTP/1.1".into()];
+        get_response(lines, |show_chips| {
+            assert_eq!(show_chips, HashSet::from(["chip1".into()]));
+            MermaidGraph {
+                statements: vec![],
+                name: "",
+                id: "".into(),
+                subgraphs: HashMap::from([(
+                    "chip1".into(),
+                    MermaidGraph {
+                        statements: vec![],
+                        name: "",
+                        id: "".into(),
+                        subgraphs: HashMap::new(),
+                    },
+                )]),
+            }
+        })
+        .expect("response not valid");
+    }
+
+    #[test]
     fn mermaid_compiles_properly_to_text() {
         struct TestChip {}
         const CHIP_ID: &str = "1";
@@ -421,8 +574,7 @@ mod tests {
         let mermaid_out = graph_outputs(&outs, HashSet::from([CHIP_ID.into()]));
 
         let expected = format!(
-            "```mermaid
-graph TD
+            "graph TD
 subgraph 1 [TestChip]
 {}IN(IN)
 {}IN(IN)-->{}OUT(OUT)
@@ -434,8 +586,7 @@ end
 {}INPUT(INPUT)-->{}IN(IN)
 {}OUT(OUT)-->{}OUTPUT(OUTPUT)
 {}INPUT(INPUT)-->{}IN(IN)
-{}OUT(OUT)-->{}OUTPUT(OUTPUT)
-```",
+{}OUT(OUT)-->{}OUTPUT(OUTPUT)",
             cin1.id,
             cin1.id,
             cout2.id,

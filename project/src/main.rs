@@ -1,7 +1,7 @@
 use std::iter;
 
 use bumpalo::Bump;
-use hdl::{ChipInput, ChipOutput, ChipOutputType, Input, Nand, SizedChip, UserInput};
+use hdl::{ChipInput, ChipOutput, ChipOutputType, Input, Machine, Nand, SizedChip, UserInput};
 use hdl_macro::{chip, StructuredData};
 
 #[derive(StructuredData, PartialEq, Debug)]
@@ -1126,5 +1126,7 @@ mod tests {
 }
 
 fn main() {
-    println!("Hello, world!");
+    let alloc = Bump::new();
+    let machine = Machine::new(&alloc, Fulladder::new);
+    ui::start_interactive_server(&machine, 3000);
 }

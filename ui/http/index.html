@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <body>
+    <pre class="mermaid">
+        {REPLACE_GRAPH}
+    </pre>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.esm.min.mjs';
+
+      mermaid.initialize();
+      await mermaid.run();
+
+      const chipIds = [{REPLACE_CHIP_IDS}];
+      chipIds.forEach(id => {
+        const chip_node = document.getElementById(id);
+        chip_node.addEventListener("click", () => {
+            const href = window.location.href.includes("?") ? window.location.href : window.location.href + "?expanded=";
+            if (href.includes(id)) {
+                window.location.replace(href.replace(id+",",""));
+            } else {
+                window.location.replace(href+id+",");
+            }
+        });
+      });
+
+    </script>
+  </body>
+</html>
