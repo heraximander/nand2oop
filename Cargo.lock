@@ -50,6 +50,7 @@ dependencies = [
  "bumpalo",
  "hdl",
  "hdl-macro",
+ "ui",
 ]
 
 [[package]]
@@ -70,6 +71,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "ui"
+version = "0.1.0"
+dependencies = [
+ "bumpalo",
+ "hdl",
 ]
 
 [[package]]
