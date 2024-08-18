@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
     use bumpalo::Bump;
+    use hdl::create_subchip;
+    use hdl::NandInputs;
     use hdl::SizedChip;
     use hdl::StructuredData;
     use hdl::{ChipInput, ChipOutput, ChipOutputType, Input, Machine, Nand};
@@ -166,6 +168,54 @@ mod tests {
                 out1: true,
                 out2: true
             }
+        );
+    }
+
+    #[test]
+    fn when_dependent_chips_of_two_different_types_are_defined_the_type_checker_passes() {
+        #[chip]
+        fn testchip<'a>(
+            alloc: &'a Bump,
+            in1: &'a ChipInput<'a>,
+            in2: &'a ChipInput<'a>,
+        ) -> UnaryChipOutput<ChipOutputType<'a>> {
+            let nand = Nand::new(alloc, in1.into(), in2.into());
+            UnaryChipOutput {
+                out: ChipOutputType::NandOutput(nand),
+            }
+        }
+
+        #[chip]
+        fn cyclicchip<'a>(
+            alloc: &'a Bump,
+            in1: &'a ChipInput<'a>,
+            in2: &'a ChipInput<'a>,
+        ) -> UnaryChipOutput<ChipOutputType<'a>> {
+            let (_, tc): (&Nand, &Testchip) = create_subchip(
+                alloc,
+                &|(testchip,)| NandInputs {
+                    in1: in1.into(),
+                    in2: testchip.get_out(alloc).out.into(),
+                },
+                &|(nand,)| TestchipInputs {
+                    in1: in2.into(),
+                    in2: nand.into(),
+                },
+            );
+
+            UnaryChipOutput {
+                out: tc.get_out(alloc).out.into(),
+            }
+        }
+
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Cyclicchip::from);
+        assert_eq!(
+            machine.process(CyclicchipInputs {
+                in1: true,
+                in2: true
+            }),
+            UnaryChipOutput { out: false }
         );
     }
 }

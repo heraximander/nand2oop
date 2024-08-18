@@ -411,3 +411,34 @@ impl<'a, TIn: Into<TOut>, TOut, const N: usize> ArrayInto<[TOut; N]> for [TIn; N
         self.map(|e| e.into())
     }
 }
+
+pub fn create_subchip<
+    'a,
+    const NINPUT1: usize,
+    const NOUT1: usize,
+    const NINPUT2: usize,
+    const NOUT2: usize,
+    TDataFam1: StructuredDataFamily<NINPUT1, NOUT1>,
+    TDataFam2: StructuredDataFamily<NINPUT2, NOUT2>,
+    T1: DefaultChip<'a, TDataFam1, NINPUT1, NOUT1>,
+    T2: DefaultChip<'a, TDataFam2, NINPUT2, NOUT2>,
+>(
+    alloc: &'a Bump,
+    in1: &dyn Fn(
+        (&'a T2,),
+    )
+        -> <TDataFam1 as StructuredDataFamily<NINPUT1, NOUT1>>::StructuredInput<Input<'a>>,
+    in2: &dyn Fn(
+        (&'a T1,),
+    )
+        -> <TDataFam2 as StructuredDataFamily<NINPUT2, NOUT2>>::StructuredInput<Input<'a>>, // note: I would rather the two closures _not_ involve dynamic dispatch, but then
+                                                                                            // I don't get type inference on its parameters
+) -> (&'a T1, &'a T2) {
+    let chip1 = T1::new(alloc);
+    let chip2 = T2::new(alloc);
+
+    chip1.set_inputs(alloc, in1((chip2,)));
+    chip2.set_inputs(alloc, in2((chip1,)));
+
+    (chip1, chip2)
+}
