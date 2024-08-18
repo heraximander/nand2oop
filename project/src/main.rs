@@ -110,6 +110,15 @@ fn not2<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 2]) -> [ChipOutputType<'
 
 #[chip]
 fn and2<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 4]) -> [ChipOutputType<'a>; 2] {
+    /* writing out this zip is painful, but if we slice `input` we lose the size information
+       required by the return type
+       we could:
+       1. rewrite this to use a for... loop. Probably the most sensible option.
+       2. write a macro for slicing a known-size array in to smaller arrays. Note that this will
+          result in copying.
+       3. Slice `input` and `.collect()` as `Vec` at the end before `.try_into()`ing in to an array.
+          Easiest way to continue using iterators but looks gross.
+    */
     [(input[0], input[2]), (input[1], input[3])].map(|(in1, in2)| {
         ChipOutputType::ChipOutput(
             And::new(alloc, [Input::ChipInput(in1), Input::ChipInput(in2)]).get_out(alloc)[0],
@@ -300,7 +309,9 @@ fn main() {
     println!("Hello, world!");
 }
 
-// TODO:
+// TODO, ideally after I inplement the ALU but if it's painful doing the ALU without them, then well...:
 // 1. Add masks for inputs and outputs, to give them names
-// 2. Add more legible diagramming
-// 3. Add muxn chip?
+// 2. Add more legible diagramming:
+//    1. At least add the names for inputs and outputs to the diagrams...
+//    2. Add an interactive version which hides the chip details until the user clicks on the chip
+// 3. Add muxn chip? Using generic constants to decide how large the outputs are
