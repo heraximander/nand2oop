@@ -1,4 +1,4 @@
-use std::iter;
+use std::{array, iter};
 
 use bumpalo::Bump;
 use hdl::{ChipInput, ChipOutput, ChipOutputType, Input, Machine, Nand, SizedChip, UserInput};
@@ -189,9 +189,9 @@ fn demux<'a>(
 }
 
 #[chip]
-fn not2<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 2]) -> ArrayLen2<ChipOutputType<'a>> {
+fn not16<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 16]) -> ArrayLen16<ChipOutputType<'a>> {
     // TODO: note that we can generalise this function to `NOT _n_`
-    ArrayLen2 {
+    ArrayLen16 {
         out: input.map(|in_| {
             ChipOutputType::ChipOutput(
                 Not::new(
@@ -216,11 +216,11 @@ fn zip<'a, T1, T2, const N: usize>(in1: [&'a T1; N], in2: [&'a T2; N]) -> [(&'a 
 }
 
 #[chip]
-fn and2<'a>(
+fn and16<'a>(
     alloc: &'a Bump,
-    in1: [&'a ChipInput<'a>; 2],
-    in2: [&'a ChipInput<'a>; 2],
-) -> ArrayLen2<ChipOutputType<'a>> {
+    in1: [&'a ChipInput<'a>; 16],
+    in2: [&'a ChipInput<'a>; 16],
+) -> ArrayLen16<ChipOutputType<'a>> {
     let out = zip(in1, in2).map(|(in1, in2)| {
         ChipOutputType::ChipOutput(
             And::new(
@@ -234,7 +234,7 @@ fn and2<'a>(
             .out,
         )
     });
-    ArrayLen2 { out }
+    ArrayLen16 { out }
 }
 
 #[chip]
@@ -260,12 +260,12 @@ fn or2<'a>(
 }
 
 #[chip]
-fn mux2<'a>(
+fn mux16<'a>(
     alloc: &'a Bump,
-    in1: [&'a ChipInput<'a>; 2],
-    in2: [&'a ChipInput<'a>; 2],
+    in1: [&'a ChipInput<'a>; 16],
+    in2: [&'a ChipInput<'a>; 16],
     sel: &'a ChipInput<'a>,
-) -> ArrayLen2<ChipOutputType<'a>> {
+) -> ArrayLen16<ChipOutputType<'a>> {
     let out = zip(in1, in2).map(|(in1, in2)| {
         ChipOutputType::ChipOutput(
             Mux::new(
@@ -280,7 +280,7 @@ fn mux2<'a>(
             .out,
         )
     });
-    ArrayLen2 { out }
+    ArrayLen16 { out }
 }
 
 #[chip]
@@ -687,85 +687,109 @@ mod tests {
     }
 
     #[test]
-    fn not2_gate_has_correct_truth_table() {
+    fn not16_gate_has_correct_truth_table() {
         let alloc = Bump::new();
-        let mut machine = Machine::new(&alloc, Not2::new);
+        let mut machine = Machine::new(&alloc, Not16::new);
         assert_eq!(
-            machine.process(Not2Inputs {
-                input: [true, true]
-            }),
-            ArrayLen2 {
-                out: [false, false]
-            }
+            machine.process(Not16Inputs { input: [true; 16] }),
+            ArrayLen16 { out: [false; 16] }
         );
         assert_eq!(
-            machine.process(Not2Inputs {
-                input: [true, false]
-            }),
-            ArrayLen2 { out: [false, true] }
-        );
-        assert_eq!(
-            machine.process(Not2Inputs {
-                input: [false, true]
-            }),
-            ArrayLen2 { out: [true, false] }
-        );
-        assert_eq!(
-            machine.process(Not2Inputs {
-                input: [false, false]
-            }),
-            ArrayLen2 { out: [true, true] }
+            machine.process(Not16Inputs { input: [false; 16] }),
+            ArrayLen16 { out: [true; 16] }
         );
     }
 
     #[test]
     fn and2_gate_has_correct_truth_table() {
         let alloc = Bump::new();
-        let mut machine = Machine::new(&alloc, And2::new);
+        let mut machine = Machine::new(&alloc, And16::new);
         assert_eq!(
-            machine.process(And2Inputs {
-                in1: [true, true],
-                in2: [true, true]
+            machine.process(And16Inputs {
+                in1: [true; 16],
+                in2: [true; 16]
             }),
-            ArrayLen2 { out: [true, true] }
+            ArrayLen16 { out: [true; 16] }
         );
         assert_eq!(
-            machine.process(And2Inputs {
-                in1: [false, true],
-                in2: [true, true]
+            machine.process(And16Inputs {
+                in1: [
+                    false, true, true, true, true, true, true, true, true, true, true, true, true,
+                    true, true, true
+                ],
+                in2: [
+                    true, true, true, true, true, true, true, true, true, true, true, true, true,
+                    true, true, true
+                ]
             }),
-            ArrayLen2 { out: [false, true] }
+            ArrayLen16 {
+                out: [
+                    false, true, true, true, true, true, true, true, true, true, true, true, true,
+                    true, true, true
+                ]
+            }
         );
         assert_eq!(
-            machine.process(And2Inputs {
-                in1: [true, false],
-                in2: [true, true]
+            machine.process(And16Inputs {
+                in1: [
+                    true, false, true, true, true, true, true, true, true, true, true, true, true,
+                    true, true, true
+                ],
+                in2: [
+                    true, true, true, true, true, true, true, true, true, true, true, true, true,
+                    true, true, true
+                ]
             }),
-            ArrayLen2 { out: [true, false] }
+            ArrayLen16 {
+                out: [
+                    true, false, true, true, true, true, true, true, true, true, true, true, true,
+                    true, true, true
+                ]
+            }
         );
         assert_eq!(
-            machine.process(And2Inputs {
-                in1: [true, true],
-                in2: [false, true]
+            machine.process(And16Inputs {
+                in1: [
+                    true, true, true, true, true, true, true, true, true, true, true, true, true,
+                    true, true, true
+                ],
+                in2: [
+                    false, true, true, true, true, true, true, true, true, true, true, true, true,
+                    true, true, true
+                ]
             }),
-            ArrayLen2 { out: [false, true] }
+            ArrayLen16 {
+                out: [
+                    false, true, true, true, true, true, true, true, true, true, true, true, true,
+                    true, true, true
+                ]
+            }
         );
         assert_eq!(
-            machine.process(And2Inputs {
-                in1: [true, true],
-                in2: [true, false]
+            machine.process(And16Inputs {
+                in1: [
+                    true, true, true, true, true, true, true, true, true, true, true, true, true,
+                    true, true, true
+                ],
+                in2: [
+                    true, false, true, true, true, true, true, true, true, true, true, true, true,
+                    true, true, true
+                ]
             }),
-            ArrayLen2 { out: [true, false] }
+            ArrayLen16 {
+                out: [
+                    true, false, true, true, true, true, true, true, true, true, true, true, true,
+                    true, true, true
+                ]
+            }
         );
         // ...
         assert_eq!(
-            machine.process(And2Inputs {
-                in1: [false, false],
-                in2: [false, false]
+            machine.process(And16Inputs {
+                in1: [false; 16],
+                in2: [false; 16]
             }),
-            ArrayLen2 {
-                out: [false, false]
-            }
+            ArrayLen16 { out: [false; 16] }
         );
     }
 
@@ -828,24 +852,24 @@ mod tests {
     }
 
     #[test]
-    fn mux2_gate_has_correct_truth_table() {
+    fn mux16_gate_has_correct_truth_table() {
         let alloc = Bump::new();
-        let mut machine = Machine::new(&alloc, Mux2::new);
+        let mut machine = Machine::new(&alloc, Mux16::new);
         assert_eq!(
-            machine.process(Mux2Inputs {
-                in1: [true, true],
-                in2: [false, true],
+            machine.process(Mux16Inputs {
+                in1: [true; 16],
+                in2: [false; 16],
                 sel: true
             }),
-            ArrayLen2 { out: [false, true] }
+            ArrayLen16 { out: [false; 16] }
         );
         assert_eq!(
-            machine.process(Mux2Inputs {
-                in1: [true, true],
-                in2: [false, true],
+            machine.process(Mux16Inputs {
+                in1: [true; 16],
+                in2: [false; 16],
                 sel: false
             }),
-            ArrayLen2 { out: [true, true] }
+            ArrayLen16 { out: [true; 16] }
         );
         // ...
     }
