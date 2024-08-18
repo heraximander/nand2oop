@@ -1,7 +1,9 @@
 use std::{array, iter};
 
 use bumpalo::Bump;
-use hdl::{ChipInput, ChipOutput, ChipOutputType, Input, Machine, Nand, SizedChip, UserInput};
+use hdl::{
+    ArrayInto, ChipInput, ChipOutput, ChipOutputType, Input, Machine, Nand, SizedChip, UserInput,
+};
 use hdl_macro::{chip, StructuredData};
 
 #[derive(StructuredData, PartialEq, Debug)]
@@ -27,10 +29,8 @@ struct ArrayLen16<T> {
 
 #[chip]
 fn not<'a>(alloc: &'a Bump, in_: &'a ChipInput<'a>) -> UnaryChipOutput<ChipOutputType<'a>> {
-    let nand = Nand::new(&alloc, Input::ChipInput(in_), Input::ChipInput(in_));
-    UnaryChipOutput::<_> {
-        out: ChipOutputType::NandOutput(nand),
-    }
+    let nand = Nand::new(&alloc, in_.into(), in_.into());
+    UnaryChipOutput { out: nand.into() }
 }
 
 #[chip]
@@ -39,15 +39,10 @@ fn and<'a>(
     in1: &'a ChipInput<'a>,
     in2: &'a ChipInput<'a>,
 ) -> UnaryChipOutput<ChipOutputType<'a>> {
-    let nand = Nand::new(&alloc, Input::ChipInput(in1), Input::ChipInput(in2));
-    let not = Not::new(
-        alloc,
-        NotInputs::<_> {
-            in_: Input::NandInput(nand),
-        },
-    );
-    UnaryChipOutput::<_> {
-        out: ChipOutputType::ChipOutput(not.get_out(alloc).out),
+    let nand = Nand::new(&alloc, in1.into(), in2.into());
+    let not = Not::new(alloc, NotInputs { in_: nand.into() });
+    UnaryChipOutput {
+        out: not.get_out(alloc).out.into(),
     }
 }
 
@@ -57,26 +52,14 @@ fn or<'a>(
     in1: &'a ChipInput<'a>,
     in2: &'a ChipInput<'a>,
 ) -> UnaryChipOutput<ChipOutputType<'a>> {
-    let not1 = Not::new(
-        &alloc,
-        NotInputs {
-            in_: Input::ChipInput(in1),
-        },
-    );
-    let not2 = Not::new(
-        &alloc,
-        NotInputs {
-            in_: Input::ChipInput(in2),
-        },
-    );
+    let not1 = Not::new(&alloc, NotInputs { in_: in1.into() });
+    let not2 = Not::new(&alloc, NotInputs { in_: in2.into() });
     let nand = Nand::new(
         &alloc,
-        Input::ChipOutput(not1.get_out(alloc).out),
-        Input::ChipOutput(not2.get_out(alloc).out),
+        not1.get_out(alloc).out.into(),
+        not2.get_out(alloc).out.into(),
     );
-    UnaryChipOutput::<_> {
-        out: ChipOutputType::NandOutput(nand),
-    }
+    UnaryChipOutput { out: nand.into() }
 }
 
 #[chip]
@@ -88,32 +71,32 @@ fn xor<'a>(
     let and = And::new(
         &alloc,
         AndInputs {
-            in1: Input::ChipInput(in1),
-            in2: Input::ChipInput(in2),
+            in1: in1.into(),
+            in2: in2.into(),
         },
     );
     let not = Not::new(
         &alloc,
         NotInputs {
-            in_: Input::ChipOutput(and.get_out(alloc).out),
+            in_: and.get_out(alloc).out.into(),
         },
     );
     let or = Or::new(
         &alloc,
         OrInputs {
-            in1: Input::ChipInput(in1),
-            in2: Input::ChipInput(in2),
+            in1: in1.into(),
+            in2: in2.into(),
         },
     );
     let and2 = And::new(
         &alloc,
         AndInputs {
-            in1: Input::ChipOutput(not.get_out(alloc).out),
-            in2: Input::ChipOutput(or.get_out(alloc).out),
+            in1: not.get_out(alloc).out.into(),
+            in2: or.get_out(alloc).out.into(),
         },
     );
     UnaryChipOutput {
-        out: ChipOutputType::ChipOutput(and2.get_out(alloc).out),
+        out: and2.get_out(alloc).out.into(),
     }
 }
 
@@ -127,32 +110,27 @@ fn mux<'a>(
     let and1 = And::new(
         alloc,
         AndInputs {
-            in1: Input::ChipInput(in2),
-            in2: Input::ChipInput(sel),
+            in1: in2.into(),
+            in2: sel.into(),
         },
     );
-    let not = Not::new(
-        alloc,
-        NotInputs {
-            in_: Input::ChipInput(sel),
-        },
-    );
+    let not = Not::new(alloc, NotInputs { in_: sel.into() });
     let and2 = And::new(
         alloc,
         AndInputs {
-            in1: Input::ChipInput(in1),
-            in2: Input::ChipOutput(not.get_out(alloc).out),
+            in1: in1.into(),
+            in2: not.get_out(alloc).out.into(),
         },
     );
     let or = Or::new(
         alloc,
         OrInputs {
-            in1: Input::ChipOutput(and1.get_out(alloc).out),
-            in2: Input::ChipOutput(and2.get_out(alloc).out),
+            in1: and1.get_out(alloc).out.into(),
+            in2: and2.get_out(alloc).out.into(),
         },
     );
     UnaryChipOutput {
-        out: ChipOutputType::ChipOutput(or.get_out(alloc).out),
+        out: or.get_out(alloc).out.into(),
     }
 }
 
@@ -165,26 +143,21 @@ fn demux<'a>(
     let and1 = And::new(
         alloc,
         AndInputs {
-            in1: Input::ChipInput(in_),
-            in2: Input::ChipInput(sel),
+            in1: in_.into(),
+            in2: sel.into(),
         },
     );
-    let not = Not::new(
-        alloc,
-        NotInputs {
-            in_: Input::ChipInput(sel),
-        },
-    );
+    let not = Not::new(alloc, NotInputs { in_: sel.into() });
     let and2 = And::new(
         alloc,
         AndInputs {
-            in1: Input::ChipInput(in_),
-            in2: Input::ChipOutput(not.get_out(alloc).out),
+            in1: in_.into(),
+            in2: not.get_out(alloc).out.into(),
         },
     );
     BinaryChipOutput {
-        out1: ChipOutputType::ChipOutput(and2.get_out(alloc).out),
-        out2: ChipOutputType::ChipOutput(and1.get_out(alloc).out),
+        out1: and2.get_out(alloc).out.into(),
+        out2: and1.get_out(alloc).out.into(),
     }
 }
 
@@ -193,16 +166,10 @@ fn not16<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 16]) -> ArrayLen16<Chip
     // TODO: note that we can generalise this function to `NOT _n_`
     ArrayLen16 {
         out: input.map(|in_| {
-            ChipOutputType::ChipOutput(
-                Not::new(
-                    alloc,
-                    NotInputs {
-                        in_: Input::ChipInput(in_),
-                    },
-                )
+            Not::new(alloc, NotInputs { in_: in_.into() })
                 .get_out(alloc)
-                .out,
-            )
+                .out
+                .into()
         }),
     }
 }
@@ -222,17 +189,16 @@ fn and16<'a>(
     in2: [&'a ChipInput<'a>; 16],
 ) -> ArrayLen16<ChipOutputType<'a>> {
     let out = zip(in1, in2).map(|(in1, in2)| {
-        ChipOutputType::ChipOutput(
-            And::new(
-                alloc,
-                AndInputs {
-                    in1: Input::ChipInput(in1),
-                    in2: Input::ChipInput(in2),
-                },
-            )
-            .get_out(alloc)
-            .out,
+        And::new(
+            alloc,
+            AndInputs {
+                in1: in1.into(),
+                in2: in2.into(),
+            },
         )
+        .get_out(alloc)
+        .out
+        .into()
     });
     ArrayLen16 { out }
 }
@@ -244,17 +210,16 @@ fn or2<'a>(
     in2: [&'a ChipInput<'a>; 2],
 ) -> ArrayLen2<ChipOutputType<'a>> {
     let out = zip(in1, in2).map(|(in1, in2)| {
-        ChipOutputType::ChipOutput(
-            Or::new(
-                alloc,
-                OrInputs {
-                    in1: Input::ChipInput(in1),
-                    in2: Input::ChipInput(in2),
-                },
-            )
-            .get_out(alloc)
-            .out,
+        Or::new(
+            alloc,
+            OrInputs {
+                in1: in1.into(),
+                in2: in2.into(),
+            },
         )
+        .get_out(alloc)
+        .out
+        .into()
     });
     ArrayLen2 { out }
 }
@@ -267,18 +232,17 @@ fn mux16<'a>(
     sel: &'a ChipInput<'a>,
 ) -> ArrayLen16<ChipOutputType<'a>> {
     let out = zip(in1, in2).map(|(in1, in2)| {
-        ChipOutputType::ChipOutput(
-            Mux::new(
-                alloc,
-                MuxInputs {
-                    in1: Input::ChipInput(in1),
-                    in2: Input::ChipInput(in2),
-                    sel: Input::ChipInput(sel),
-                },
-            )
-            .get_out(alloc)
-            .out,
+        Mux::new(
+            alloc,
+            MuxInputs {
+                in1: Input::ChipInput(in1),
+                in2: Input::ChipInput(in2),
+                sel: Input::ChipInput(sel),
+            },
         )
+        .get_out(alloc)
+        .out
+        .into()
     });
     ArrayLen16 { out }
 }
@@ -291,8 +255,8 @@ fn andmult4<'a>(
     let initial_and = And::new(
         alloc,
         AndInputs {
-            in1: Input::ChipInput(in_[0]),
-            in2: Input::ChipInput(in_[1]),
+            in1: in_[0].into(),
+            in2: in_[1].into(),
         },
     )
     .get_out(alloc)
@@ -301,16 +265,14 @@ fn andmult4<'a>(
         And::new(
             alloc,
             AndInputs {
-                in1: Input::ChipInput(in_),
-                in2: Input::ChipOutput(acc),
+                in1: (*in_).into(),
+                in2: acc.into(),
             },
         )
         .get_out(alloc)
         .out
     });
-    UnaryChipOutput {
-        out: ChipOutputType::ChipOutput(out),
-    }
+    UnaryChipOutput { out: out.into() }
 }
 
 #[chip]
@@ -321,21 +283,21 @@ fn ormult16<'a>(
     let initial_nor = Or::new(
         alloc,
         OrInputs {
-            in1: Input::ChipInput(in_[0]),
-            in2: Input::ChipInput(in_[1]),
+            in1: in_[0].into(),
+            in2: in_[1].into(),
         },
     );
     let out = in_.iter().skip(2).fold(initial_nor, |acc, in_| {
         Or::new(
             alloc,
             OrInputs {
-                in1: Input::ChipInput(in_),
-                in2: Input::ChipOutput(acc.get_out(alloc).out),
+                in1: (*in_).into(),
+                in2: acc.get_out(alloc).out.into(),
             },
         )
     });
     UnaryChipOutput {
-        out: ChipOutputType::ChipOutput(out.get_out(alloc).out),
+        out: out.get_out(alloc).out.into(),
     }
 }
 
@@ -354,20 +316,20 @@ fn halfadder<'a>(
     let sum_bit = Xor::new(
         alloc,
         XorInputs {
-            in1: Input::ChipInput(num1),
-            in2: Input::ChipInput(num2),
+            in1: num1.into(),
+            in2: num2.into(),
         },
     );
     let carry_bit = And::new(
         alloc,
         AndInputs {
-            in1: Input::ChipInput(num1),
-            in2: Input::ChipInput(num2),
+            in1: num1.into(),
+            in2: num2.into(),
         },
     );
     AdderOut {
-        carry: ChipOutputType::ChipOutput(carry_bit.get_out(alloc).out),
-        sum: ChipOutputType::ChipOutput(sum_bit.get_out(alloc).out),
+        carry: carry_bit.get_out(alloc).out.into(),
+        sum: sum_bit.get_out(alloc).out.into(),
     }
 }
 
@@ -381,27 +343,27 @@ fn fulladder<'a>(
     let first_hadder = Halfadder::new(
         alloc,
         HalfadderInputs {
-            num1: Input::ChipInput(num1),
-            num2: Input::ChipInput(num2),
+            num1: num1.into(),
+            num2: num2.into(),
         },
     );
     let second_hadder = Halfadder::new(
         alloc,
         HalfadderInputs {
-            num1: Input::ChipInput(num3),
-            num2: Input::ChipOutput(first_hadder.get_out(alloc).sum),
+            num1: num3.into(),
+            num2: first_hadder.get_out(alloc).sum.into(),
         },
     );
     let carry_or = Or::new(
         alloc,
         OrInputs {
-            in1: Input::ChipOutput(first_hadder.get_out(alloc).carry),
-            in2: Input::ChipOutput(second_hadder.get_out(alloc).carry),
+            in1: first_hadder.get_out(alloc).carry.into(),
+            in2: second_hadder.get_out(alloc).carry.into(),
         },
     );
     AdderOut {
-        carry: ChipOutputType::ChipOutput(carry_or.get_out(alloc).out),
-        sum: ChipOutputType::ChipOutput(second_hadder.get_out(alloc).sum),
+        carry: carry_or.get_out(alloc).out.into(),
+        sum: second_hadder.get_out(alloc).sum.into(),
     }
 }
 
@@ -414,8 +376,8 @@ fn adder16<'a>(
     let lsb = Halfadder::new(
         alloc,
         HalfadderInputs {
-            num1: Input::ChipInput(num1[15]),
-            num2: Input::ChipInput(num2[15]),
+            num1: num1[15].into(),
+            num2: num2[15].into(),
         },
     );
     let zipin = num1[..15]
@@ -427,16 +389,16 @@ fn adder16<'a>(
             let adder = Fulladder::new(
                 alloc,
                 FulladderInputs {
-                    num1: Input::ChipOutput(prev_carry),
-                    num2: Input::ChipInput(x.0),
-                    num3: Input::ChipInput(x.1),
+                    num1: prev_carry.into(),
+                    num2: (*x.0).into(),
+                    num3: (*x.1).into(),
                 },
             );
             acc.push(adder.get_out(alloc));
             acc
         })
         .iter()
-        .map(|out| ChipOutputType::ChipOutput(out.sum))
+        .map(|out| out.sum.into())
         .rev()
         .collect::<Vec<_>>();
 
@@ -453,9 +415,9 @@ fn incrementer16<'a>(
     num: [&'a ChipInput<'a>; 16],
 ) -> ArrayLen16<ChipOutputType<'a>> {
     let inputs = num.map(|in_| Input::ChipInput(in_));
-    let adder_inputs = iter::repeat_with(|| Input::UserInput(UserInput::from(alloc, false)))
+    let adder_inputs = iter::repeat_with(|| UserInput::from(alloc, false).into())
         .take(15)
-        .chain(iter::once(Input::UserInput(UserInput::from(alloc, true))))
+        .chain(iter::once(UserInput::from(alloc, true).into()))
         .collect::<Vec<_>>()
         .try_into()
         .unwrap_or_else(|_| panic!("array must be length 16"));
@@ -466,10 +428,7 @@ fn incrementer16<'a>(
             num2: inputs,
         },
     );
-    let out = adder
-        .get_out(alloc)
-        .out
-        .map(|x| ChipOutputType::ChipOutput(x));
+    let out = adder.get_out(alloc).out.ainto();
     ArrayLen16 { out }
 }
 
@@ -495,16 +454,13 @@ fn zeronum<'a>(
     let zero_num = And16::new(
         alloc,
         And16Inputs {
-            in1: num.map(|xi| Input::ChipInput(xi)),
-            in2: not_zero.get_out(alloc).out.map(|xi| Input::ChipOutput(xi)),
+            in1: num.ainto(),
+            in2: not_zero.get_out(alloc).out.ainto(),
         },
     );
 
     ArrayLen16 {
-        out: zero_num
-            .get_out(alloc)
-            .out
-            .map(|z| ChipOutputType::ChipOutput(z)),
+        out: zero_num.get_out(alloc).out.ainto(),
     }
 }
 
@@ -514,26 +470,18 @@ fn negatenum<'a>(
     num: [&'a ChipInput<'a>; 16],
     negate: &'a ChipInput<'a>,
 ) -> ArrayLen16<ChipOutputType<'a>> {
-    let not = Not16::new(
-        alloc,
-        Not16Inputs {
-            input: num.map(|o| Input::ChipInput(o)),
-        },
-    );
+    let not = Not16::new(alloc, Not16Inputs { input: num.ainto() });
     let mux_not_x = Mux16::new(
         alloc,
         Mux16Inputs {
-            in1: num.map(|o| Input::ChipInput(o)),
-            in2: not.get_out(alloc).out.map(|o| Input::ChipOutput(o)),
-            sel: Input::ChipInput(negate),
+            in1: num.ainto(),
+            in2: not.get_out(alloc).out.ainto(),
+            sel: negate.into(),
         },
     ); // note: it might be more power efficient in real hardware to demux first rather than
        // mux at the end. I'm not a real engineer though, so I don't know
     ArrayLen16 {
-        out: mux_not_x
-            .get_out(alloc)
-            .out
-            .map(|o| ChipOutputType::ChipOutput(o)),
+        out: mux_not_x.get_out(alloc).out.ainto(),
     }
 }
 
@@ -547,27 +495,27 @@ fn andorplus<'a>(
     let add_nums = Adder16::new(
         alloc,
         Adder16Inputs {
-            num1: num1.map(Input::ChipInput),
-            num2: num2.map(Input::ChipInput), // FIXME: apply this pattern to other chips
+            num1: num1.ainto(),
+            num2: num2.ainto(),
         },
     );
     let and_nums = And16::new(
         alloc,
         And16Inputs {
-            in1: num1.map(Input::ChipInput),
-            in2: num2.map(Input::ChipInput),
+            in1: num1.ainto(),
+            in2: num2.ainto(),
         },
     );
     let mux = Mux16::new(
         alloc,
         Mux16Inputs {
-            in1: and_nums.get_out(alloc).out.map(Input::ChipOutput),
-            in2: add_nums.get_out(alloc).out.map(Input::ChipOutput),
-            sel: Input::ChipInput(isadd),
+            in1: and_nums.get_out(alloc).out.ainto(),
+            in2: add_nums.get_out(alloc).out.ainto(),
+            sel: isadd.into(),
         },
     );
     ArrayLen16 {
-        out: mux.get_out(alloc).out.map(ChipOutputType::ChipOutput),
+        out: mux.get_out(alloc).out.ainto(),
     }
 }
 
@@ -586,71 +534,62 @@ fn alu<'a>(
     let zero_x = Zeronum::new(
         alloc,
         ZeronumInputs {
-            num: x.map(|n| Input::ChipInput(n)),
-            zero: Input::ChipInput(zx),
+            num: x.ainto(),
+            zero: zx.into(),
         },
     );
     let zero_y = Zeronum::new(
         alloc,
         ZeronumInputs {
-            num: y.map(|n| Input::ChipInput(n)),
-            zero: Input::ChipInput(zy),
+            num: y.ainto(),
+            zero: zy.into(),
         },
     );
     let not_x = Negatenum::new(
         alloc,
         NegatenumInputs {
-            num: zero_x.get_out(alloc).out.map(|o| Input::ChipOutput(o)),
-            negate: Input::ChipInput(nx),
+            num: zero_x.get_out(alloc).out.ainto(),
+            negate: nx.into(),
         },
     );
     let not_y = Negatenum::new(
         alloc,
         NegatenumInputs {
-            num: zero_y.get_out(alloc).out.map(|o| Input::ChipOutput(o)),
-            negate: Input::ChipInput(ny),
+            num: zero_y.get_out(alloc).out.ainto(),
+            negate: ny.into(),
         },
     );
     let func = Andorplus::new(
         alloc,
         AndorplusInputs {
-            num1: not_x.get_out(alloc).out.map(Input::ChipOutput),
-            num2: not_y.get_out(alloc).out.map(Input::ChipOutput),
-            isadd: Input::ChipInput(f),
+            num1: not_x.get_out(alloc).out.ainto(),
+            num2: not_y.get_out(alloc).out.ainto(),
+            isadd: f.into(),
         },
     );
     let negate_result = Negatenum::new(
         alloc,
         NegatenumInputs {
-            num: func.get_out(alloc).out.map(Input::ChipOutput),
-            negate: Input::ChipInput(no),
+            num: func.get_out(alloc).out.ainto(),
+            negate: no.into(),
         },
     );
     let is_non_zero = Ormult16::new(
         alloc,
         Ormult16Inputs {
-            in_: negate_result.get_out(alloc).out.map(Input::ChipOutput),
+            in_: negate_result.get_out(alloc).out.ainto(),
         },
     );
     let is_zero = Not::new(
         alloc,
         NotInputs {
-            in_: Input::ChipOutput(is_non_zero.get_out(alloc).out),
+            in_: is_non_zero.get_out(alloc).out.into(),
         },
     );
     AluOutputs {
-        out: negate_result
-            .get_out(alloc)
-            .out
-            .map(ChipOutputType::ChipOutput),
-        zr: ChipOutputType::ChipInput(ChipInput::new(
-            alloc,
-            Input::ChipOutput(is_zero.get_out(alloc).out),
-        )),
-        ng: ChipOutputType::ChipInput(ChipInput::new(
-            alloc,
-            Input::ChipOutput(negate_result.get_out(alloc).out[0]),
-        )),
+        out: negate_result.get_out(alloc).out.ainto(),
+        zr: is_zero.get_out(alloc).out.into(),
+        ng: negate_result.get_out(alloc).out[0].into(),
     }
 }
 

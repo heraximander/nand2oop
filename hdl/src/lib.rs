@@ -103,6 +103,12 @@ impl UserInput {
     }
 }
 
+impl<'a> Into<Input<'a>> for &'a UserInput {
+    fn into(self) -> Input<'a> {
+        Input::UserInput(self)
+    }
+}
+
 #[derive(Copy, Clone)]
 pub enum Input<'a> {
     UserInput(&'a UserInput),
@@ -141,6 +147,12 @@ impl<'a> ChipInput<'a> {
     }
 }
 
+impl<'a> Into<Input<'a>> for &'a ChipInput<'a> {
+    fn into(self) -> Input<'a> {
+        Input::ChipInput(self)
+    }
+}
+
 pub enum ChipOutputType<'a> {
     ChipOutput(&'a ChipOutputWrapper<'a>),
     NandOutput(&'a Nand<'a>),
@@ -157,6 +169,18 @@ pub struct ChipOutput<'a> {
 pub struct ChipOutputWrapper<'a> {
     pub inner: &'a ChipOutput<'a>,
     pub parent: &'a dyn Chip<'a>,
+}
+
+impl<'a> Into<Input<'a>> for &'a ChipOutputWrapper<'a> {
+    fn into(self) -> Input<'a> {
+        Input::ChipOutput(self)
+    }
+}
+
+impl<'a> Into<ChipOutputType<'a>> for &'a ChipOutputWrapper<'a> {
+    fn into(self) -> ChipOutputType<'a> {
+        ChipOutputType::ChipOutput(self)
+    }
 }
 
 pub trait Chip<'a> {
@@ -245,5 +269,27 @@ impl<'a> Nand<'a> {
         self.iteration.set(iteration);
         self.value.set(res);
         res
+    }
+}
+
+impl<'a> Into<Input<'a>> for &'a Nand<'a> {
+    fn into(self) -> Input<'a> {
+        Input::NandInput(self)
+    }
+}
+
+impl<'a> Into<ChipOutputType<'a>> for &'a Nand<'a> {
+    fn into(self) -> ChipOutputType<'a> {
+        ChipOutputType::NandOutput(self)
+    }
+}
+
+pub trait ArrayInto<T> {
+    fn ainto(self) -> T;
+}
+
+impl<'a, TIn: Into<TOut>, TOut, const N: usize> ArrayInto<[TOut; N]> for [TIn; N] {
+    fn ainto(self) -> [TOut; N] {
+        self.map(|e| e.into())
     }
 }
