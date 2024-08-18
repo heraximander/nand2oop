@@ -207,22 +207,21 @@ fn not2<'a>(alloc: &'a Bump, input: [&'a ChipInput<'a>; 2]) -> ArrayLen2<ChipOut
     }
 }
 
+fn zip<'a, T1, T2, const N: usize>(in1: [&'a T1; N], in2: [&'a T2; N]) -> [(&'a T1, &'a T2); N] {
+    let mut out = [Option::None; N];
+    for i in 0..N {
+        out[i] = Some((in1[i], in2[i]));
+    }
+    out.map(|e| e.unwrap())
+}
+
 #[chip]
 fn and2<'a>(
     alloc: &'a Bump,
     in1: [&'a ChipInput<'a>; 2],
     in2: [&'a ChipInput<'a>; 2],
 ) -> ArrayLen2<ChipOutputType<'a>> {
-    /* writing out this zip is painful, but if we slice `input` we lose the size information
-       required by the return type
-       we could:
-       1. rewrite this to use a for... loop. Probably the most sensible option.
-       2. write a macro for slicing a known-size array in to smaller arrays. Note that this will
-          result in copying.
-       3. Slice `input` and `.collect()` as `Vec` at the end before `.try_into()`ing in to an array.
-          Easiest way to continue using iterators but looks gross.
-    */
-    let out = [(in1[0], in2[0]), (in1[1], in2[1])].map(|(in1, in2)| {
+    let out = zip(in1, in2).map(|(in1, in2)| {
         ChipOutputType::ChipOutput(
             And::new(
                 alloc,
@@ -244,7 +243,7 @@ fn or2<'a>(
     in1: [&'a ChipInput<'a>; 2],
     in2: [&'a ChipInput<'a>; 2],
 ) -> ArrayLen2<ChipOutputType<'a>> {
-    let out = [(in1[0], in2[0]), (in1[1], in2[1])].map(|(in1, in2)| {
+    let out = zip(in1, in2).map(|(in1, in2)| {
         ChipOutputType::ChipOutput(
             Or::new(
                 alloc,
@@ -267,7 +266,7 @@ fn mux2<'a>(
     in2: [&'a ChipInput<'a>; 2],
     sel: &'a ChipInput<'a>,
 ) -> ArrayLen2<ChipOutputType<'a>> {
-    let out = [(in1[0], in2[0]), (in1[1], in2[1])].map(|(in1, in2)| {
+    let out = zip(in1, in2).map(|(in1, in2)| {
         ChipOutputType::ChipOutput(
             Mux::new(
                 alloc,
