@@ -612,29 +612,408 @@ fn register16<'a>(
     ArrayLen16 { out }
 }
 
+#[chip]
+fn ram8<'a>(
+    alloc: &'a Bump,
+    in_: [&'a ChipInput<'a>; 16],
+    address: [&'a ChipInput<'a>; 3],
+    load: &'a ChipInput<'a>,
+    clock: &'a ChipInput<'a>,
+) -> ArrayLen16<ChipOutputType<'a>> {
+    let demux = Demux1x8::new(alloc, load.into(), address.ainto());
+    let dmxo = demux.get_out(alloc);
+
+    let reg1 = Register16::new(alloc, in_.ainto(), dmxo.out1.into(), clock.into());
+    let reg2 = Register16::new(alloc, in_.ainto(), dmxo.out2.into(), clock.into());
+    let reg3 = Register16::new(alloc, in_.ainto(), dmxo.out3.into(), clock.into());
+    let reg4 = Register16::new(alloc, in_.ainto(), dmxo.out4.into(), clock.into());
+    let reg5 = Register16::new(alloc, in_.ainto(), dmxo.out5.into(), clock.into());
+    let reg6 = Register16::new(alloc, in_.ainto(), dmxo.out6.into(), clock.into());
+    let reg7 = Register16::new(alloc, in_.ainto(), dmxo.out7.into(), clock.into());
+    let reg8 = Register16::new(alloc, in_.ainto(), dmxo.out8.into(), clock.into());
+
+    let mux = Mux16x8::new(
+        alloc,
+        reg1.get_out(alloc).out.ainto(),
+        reg2.get_out(alloc).out.ainto(),
+        reg3.get_out(alloc).out.ainto(),
+        reg4.get_out(alloc).out.ainto(),
+        reg5.get_out(alloc).out.ainto(),
+        reg6.get_out(alloc).out.ainto(),
+        reg7.get_out(alloc).out.ainto(),
+        reg8.get_out(alloc).out.ainto(),
+        address.ainto(),
+    );
+
+    ArrayLen16 {
+        out: mux.get_out(alloc).out.ainto(),
+    }
+}
+
+#[chip]
+fn ram64<'a>(
+    alloc: &'a Bump,
+    in_: [&'a ChipInput<'a>; 16],
+    address: [&'a ChipInput<'a>; 6],
+    load: &'a ChipInput<'a>,
+    clock: &'a ChipInput<'a>,
+) -> ArrayLen16<ChipOutputType<'a>> {
+    let this_addr = from_fn(|i| address[i]);
+    let remaining_addr = from_fn(|i| address[i + 3]);
+    let demux = Demux1x8::new(alloc, load.into(), this_addr.ainto());
+    let dmxo = demux.get_out(alloc);
+
+    let reg1 = Ram8::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out1.into(),
+        clock.into(),
+    );
+    let reg2 = Ram8::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out2.into(),
+        clock.into(),
+    );
+    let reg3 = Ram8::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out3.into(),
+        clock.into(),
+    );
+    let reg4 = Ram8::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out4.into(),
+        clock.into(),
+    );
+    let reg5 = Ram8::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out5.into(),
+        clock.into(),
+    );
+    let reg6 = Ram8::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out6.into(),
+        clock.into(),
+    );
+    let reg7 = Ram8::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out7.into(),
+        clock.into(),
+    );
+    let reg8 = Ram8::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out8.into(),
+        clock.into(),
+    );
+
+    let mux = Mux16x8::new(
+        alloc,
+        reg1.get_out(alloc).out.ainto(),
+        reg2.get_out(alloc).out.ainto(),
+        reg3.get_out(alloc).out.ainto(),
+        reg4.get_out(alloc).out.ainto(),
+        reg5.get_out(alloc).out.ainto(),
+        reg6.get_out(alloc).out.ainto(),
+        reg7.get_out(alloc).out.ainto(),
+        reg8.get_out(alloc).out.ainto(),
+        this_addr.ainto(),
+    );
+
+    ArrayLen16 {
+        out: mux.get_out(alloc).out.ainto(),
+    }
+}
+
+#[chip]
+fn ram512<'a>(
+    alloc: &'a Bump,
+    in_: [&'a ChipInput<'a>; 16],
+    address: [&'a ChipInput<'a>; 9],
+    load: &'a ChipInput<'a>,
+    clock: &'a ChipInput<'a>,
+) -> ArrayLen16<ChipOutputType<'a>> {
+    let this_addr = from_fn(|i| address[i]);
+    let remaining_addr = from_fn(|i| address[i + 3]);
+    let demux = Demux1x8::new(alloc, load.into(), this_addr.ainto());
+    let dmxo = demux.get_out(alloc);
+
+    let reg1 = Ram64::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out1.into(),
+        clock.into(),
+    );
+    let reg2 = Ram64::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out2.into(),
+        clock.into(),
+    );
+    let reg3 = Ram64::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out3.into(),
+        clock.into(),
+    );
+    let reg4 = Ram64::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out4.into(),
+        clock.into(),
+    );
+    let reg5 = Ram64::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out5.into(),
+        clock.into(),
+    );
+    let reg6 = Ram64::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out6.into(),
+        clock.into(),
+    );
+    let reg7 = Ram64::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out7.into(),
+        clock.into(),
+    );
+    let reg8 = Ram64::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out8.into(),
+        clock.into(),
+    );
+
+    let mux = Mux16x8::new(
+        alloc,
+        reg1.get_out(alloc).out.ainto(),
+        reg2.get_out(alloc).out.ainto(),
+        reg3.get_out(alloc).out.ainto(),
+        reg4.get_out(alloc).out.ainto(),
+        reg5.get_out(alloc).out.ainto(),
+        reg6.get_out(alloc).out.ainto(),
+        reg7.get_out(alloc).out.ainto(),
+        reg8.get_out(alloc).out.ainto(),
+        this_addr.ainto(),
+    );
+
+    ArrayLen16 {
+        out: mux.get_out(alloc).out.ainto(),
+    }
+}
+
+#[chip]
+fn ram16k<'a>(
+    alloc: &'a Bump,
+    in_: [&'a ChipInput<'a>; 16],
+    address: [&'a ChipInput<'a>; 12],
+    load: &'a ChipInput<'a>,
+    clock: &'a ChipInput<'a>,
+) -> ArrayLen16<ChipOutputType<'a>> {
+    let this_addr = from_fn(|i| address[i]);
+    let remaining_addr = from_fn(|i| address[i + 3]);
+    let demux = Demux1x4::new(alloc, load.into(), this_addr.ainto());
+    let dmxo = demux.get_out(alloc);
+
+    let reg1 = Ram512::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out1.into(),
+        clock.into(),
+    );
+    let reg2 = Ram512::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out2.into(),
+        clock.into(),
+    );
+    let reg3 = Ram512::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out3.into(),
+        clock.into(),
+    );
+    let reg4 = Ram512::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out4.into(),
+        clock.into(),
+    );
+
+    let mux = Mux16x4::new(
+        alloc,
+        reg1.get_out(alloc).out.ainto(),
+        reg2.get_out(alloc).out.ainto(),
+        reg3.get_out(alloc).out.ainto(),
+        reg4.get_out(alloc).out.ainto(),
+        this_addr.ainto(),
+    );
+
+    ArrayLen16 {
+        out: mux.get_out(alloc).out.ainto(),
+    }
+}
+
+#[chip]
+fn ram4k<'a>(
+    alloc: &'a Bump,
+    in_: [&'a ChipInput<'a>; 16],
+    address: [&'a ChipInput<'a>; 12],
+    load: &'a ChipInput<'a>,
+    clock: &'a ChipInput<'a>,
+) -> ArrayLen16<ChipOutputType<'a>> {
+    let this_addr = from_fn(|i| address[i]);
+    let remaining_addr = from_fn(|i| address[i + 3]);
+    let demux = Demux1x8::new(alloc, load.into(), this_addr.ainto());
+    let dmxo = demux.get_out(alloc);
+
+    let reg1 = Ram512::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out1.into(),
+        clock.into(),
+    );
+    let reg2 = Ram512::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out2.into(),
+        clock.into(),
+    );
+    let reg3 = Ram512::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out3.into(),
+        clock.into(),
+    );
+    let reg4 = Ram512::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out4.into(),
+        clock.into(),
+    );
+    let reg5 = Ram512::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out5.into(),
+        clock.into(),
+    );
+    let reg6 = Ram512::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out6.into(),
+        clock.into(),
+    );
+    let reg7 = Ram512::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out7.into(),
+        clock.into(),
+    );
+    let reg8 = Ram512::new(
+        alloc,
+        in_.ainto(),
+        remaining_addr.ainto(),
+        dmxo.out8.into(),
+        clock.into(),
+    );
+
+    let mux = Mux16x8::new(
+        alloc,
+        reg1.get_out(alloc).out.ainto(),
+        reg2.get_out(alloc).out.ainto(),
+        reg3.get_out(alloc).out.ainto(),
+        reg4.get_out(alloc).out.ainto(),
+        reg5.get_out(alloc).out.ainto(),
+        reg6.get_out(alloc).out.ainto(),
+        reg7.get_out(alloc).out.ainto(),
+        reg8.get_out(alloc).out.ainto(),
+        this_addr.ainto(),
+    );
+
+    ArrayLen16 {
+        out: mux.get_out(alloc).out.ainto(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::{i16, usize};
+
+    use crate::*;
     use bumpalo::Bump;
     use hdl::Machine;
 
-    use crate::*;
+    fn ntb<const N: usize>(in_: i16) -> [bool; N] {
+        let in32 = i32::from(in_);
+        let mut ret = from_fn(|i| {
+            let mask = (2 as i32).pow(i as u32);
+            if in32 & mask == mask {
+                true
+            } else {
+                false
+            }
+        });
+        ret.reverse();
+        ret
+    }
+
+    #[test]
+    fn number_to_bool_array_works_as_expected() {
+        let num = ntb(5);
+        assert_eq!(num, [true, false, true]);
+    }
 
     #[test]
     fn register16_has_correct_truth_table() {
         let alloc = Bump::new();
         let mut machine = Machine::new(&alloc, Register16::from);
         let res = machine.process(Register16Inputs {
-            in_: [true; 16],
+            in_: ntb(4321),
             load: true,
             clock: true,
         }); // initial state
-        assert_eq!(res.out, [false; 16]);
+        assert_eq!(res.out, ntb(0));
         let res = machine.process(Register16Inputs {
-            in_: [false; 16],
+            in_: ntb(0),
             load: true,
             clock: false,
         }); // tock
-        assert_eq!(res.out, [true; 16]);
+        assert_eq!(res.out, ntb(4321));
     }
 
     #[test]
@@ -781,14 +1160,8 @@ mod tests {
 
         // addition works
         let res = machine.process(AluInputs {
-            x: [
-                false, false, false, false, false, false, false, false, false, false, false, false,
-                false, false, false, true,
-            ],
-            y: [
-                false, false, false, false, false, false, false, false, false, false, false, false,
-                false, false, false, true,
-            ],
+            x: ntb(1),
+            y: ntb(1),
             zx: false,
             zy: false,
             ny: false,
@@ -799,10 +1172,7 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [
-                    false, false, false, false, false, false, false, false, false, false, false,
-                    false, false, false, true, false
-                ],
+                out: ntb(2),
                 zr: false,
                 ng: false
             }
@@ -810,14 +1180,8 @@ mod tests {
 
         // zx works
         let res = machine.process(AluInputs {
-            x: [
-                false, false, false, false, false, false, false, false, false, false, false, false,
-                false, false, false, true,
-            ],
-            y: [
-                false, false, false, false, false, false, false, false, false, false, false, false,
-                false, false, true, false,
-            ],
+            x: ntb(1),
+            y: ntb(2),
             zx: true,
             zy: false,
             ny: false,
@@ -828,10 +1192,7 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [
-                    false, false, false, false, false, false, false, false, false, false, false,
-                    false, false, false, true, false
-                ],
+                out: ntb(2),
                 zr: false,
                 ng: false
             }
@@ -839,14 +1200,8 @@ mod tests {
 
         // zy works
         let res = machine.process(AluInputs {
-            x: [
-                false, false, false, false, false, false, false, false, false, false, false, false,
-                false, false, false, true,
-            ],
-            y: [
-                false, false, false, false, false, false, false, false, false, false, false, false,
-                false, false, true, false,
-            ],
+            x: ntb(1),
+            y: ntb(2),
             zx: false,
             zy: true,
             ny: false,
@@ -857,10 +1212,7 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [
-                    false, false, false, false, false, false, false, false, false, false, false,
-                    false, false, false, false, true
-                ],
+                out: ntb(1),
                 zr: false,
                 ng: false
             }
@@ -880,10 +1232,7 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [
-                    true, true, true, true, true, true, true, true, true, true, true, true, true,
-                    true, true, false
-                ],
+                out: ntb(-2),
                 zr: false,
                 ng: true
             }
@@ -891,8 +1240,8 @@ mod tests {
 
         // ny works
         let res = machine.process(AluInputs {
-            x: [true; 16],
-            y: [false; 16],
+            x: ntb(-1),
+            y: ntb(0),
             zx: false,
             zy: false,
             ny: true,
@@ -903,10 +1252,7 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [
-                    true, true, true, true, true, true, true, true, true, true, true, true, true,
-                    true, true, false
-                ],
+                out: ntb(-2),
                 zr: false,
                 ng: true
             }
@@ -914,8 +1260,8 @@ mod tests {
 
         // no works
         let res = machine.process(AluInputs {
-            x: [true; 16],
-            y: [true; 16],
+            x: ntb(-1),
+            y: ntb(-1),
             zx: false,
             zy: false,
             ny: false,
@@ -926,10 +1272,7 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [
-                    false, false, false, false, false, false, false, false, false, false, false,
-                    false, false, false, false, true
-                ],
+                out: ntb(1),
                 ng: false,
                 zr: false
             }
@@ -937,8 +1280,8 @@ mod tests {
 
         // and works
         let res = machine.process(AluInputs {
-            x: [true; 16],
-            y: [true; 16],
+            x: ntb(-1),
+            y: ntb(-1),
             zx: false,
             zy: false,
             ny: false,
@@ -949,7 +1292,7 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [true; 16],
+                out: ntb(-1),
                 ng: true,
                 zr: false
             }
@@ -958,8 +1301,8 @@ mod tests {
         // now I'll just put in the rest of the truth table as per the book
         // 0
         let res = machine.process(AluInputs {
-            x: [true; 16],
-            y: [true; 16],
+            x: ntb(-1),
+            y: ntb(-1),
             zx: true,
             zy: true,
             ny: false,
@@ -970,7 +1313,7 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [false; 16],
+                out: ntb(0),
                 ng: false,
                 zr: true
             }
@@ -978,8 +1321,8 @@ mod tests {
 
         // 1
         let res = machine.process(AluInputs {
-            x: [true; 16],
-            y: [true; 16],
+            x: ntb(-1),
+            y: ntb(-1),
             zx: true,
             zy: true,
             ny: true,
@@ -990,10 +1333,7 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [
-                    false, false, false, false, false, false, false, false, false, false, false,
-                    false, false, false, false, true
-                ],
+                out: ntb(1),
                 ng: false,
                 zr: false
             }
@@ -1001,8 +1341,8 @@ mod tests {
 
         // -1
         let res = machine.process(AluInputs {
-            x: [true; 16],
-            y: [true; 16],
+            x: ntb(132),
+            y: ntb(876),
             zx: true,
             zy: true,
             ny: false,
@@ -1013,7 +1353,7 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [true; 16],
+                out: ntb(-1),
                 ng: true,
                 zr: false
             }
@@ -1021,8 +1361,8 @@ mod tests {
 
         // x
         let res = machine.process(AluInputs {
-            x: [true; 16],
-            y: [false; 16],
+            x: ntb(452),
+            y: ntb(671),
             zx: false,
             zy: true,
             ny: true,
@@ -1033,16 +1373,16 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [true; 16],
-                ng: true,
+                out: ntb(452),
+                ng: false,
                 zr: false
             }
         );
 
         // y
         let res = machine.process(AluInputs {
-            x: [false; 16],
-            y: [true; 16],
+            x: ntb(452),
+            y: ntb(671),
             zx: true,
             zy: false,
             ny: false,
@@ -1053,16 +1393,16 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [true; 16],
-                ng: true,
+                out: ntb(671),
+                ng: false,
                 zr: false
             }
         );
 
         // !x
         let res = machine.process(AluInputs {
-            x: [true; 16],
-            y: [false; 16],
+            x: ntb(452),
+            y: ntb(671),
             zx: false,
             zy: true,
             ny: true,
@@ -1073,16 +1413,16 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [false; 16],
-                ng: false,
-                zr: true
+                out: ntb(!452),
+                ng: true,
+                zr: false
             }
         );
 
         // !y
         let res = machine.process(AluInputs {
-            x: [true; 16],
-            y: [false; 16],
+            x: ntb(452),
+            y: ntb(671),
             zx: true,
             zy: false,
             ny: false,
@@ -1093,7 +1433,7 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [true; 16],
+                out: ntb(!671),
                 ng: true,
                 zr: false
             }
@@ -1101,8 +1441,8 @@ mod tests {
 
         // x+1
         let res = machine.process(AluInputs {
-            x: [true; 16],
-            y: [false; 16],
+            x: ntb(452),
+            y: ntb(671),
             zx: false,
             zy: true,
             ny: true,
@@ -1113,16 +1453,16 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [false; 16],
+                out: ntb(452 + 1),
                 ng: false,
-                zr: true
+                zr: false
             }
         );
 
         // y+1
         let res = machine.process(AluInputs {
-            x: [true; 16],
-            y: [false; 16],
+            x: ntb(452),
+            y: ntb(671),
             zx: true,
             zy: false,
             ny: true,
@@ -1133,10 +1473,7 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [
-                    false, false, false, false, false, false, false, false, false, false, false,
-                    false, false, false, false, true
-                ],
+                out: ntb(671 + 1),
                 ng: false,
                 zr: false
             }
@@ -1144,8 +1481,8 @@ mod tests {
 
         // x-1
         let res = machine.process(AluInputs {
-            x: [true; 16],
-            y: [false; 16],
+            x: ntb(452),
+            y: ntb(671),
             zx: false,
             zy: true,
             ny: true,
@@ -1156,19 +1493,16 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [
-                    true, true, true, true, true, true, true, true, true, true, true, true, true,
-                    true, true, false
-                ],
-                ng: true,
+                out: ntb(452 - 1),
+                ng: false,
                 zr: false
             }
         );
 
         // y-1
         let res = machine.process(AluInputs {
-            x: [true; 16],
-            y: [false; 16],
+            x: ntb(452),
+            y: ntb(671),
             zx: true,
             zy: false,
             ny: false,
@@ -1179,22 +1513,16 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [true; 16],
-                ng: true,
+                out: ntb(671 - 1),
+                ng: false,
                 zr: false
             }
         );
 
         // x+y
         let res = machine.process(AluInputs {
-            x: [
-                false, false, false, false, false, false, false, false, false, false, false, false,
-                false, false, false, true,
-            ],
-            y: [
-                false, false, false, false, false, false, false, false, false, false, false, false,
-                false, false, true, false,
-            ],
+            x: ntb(452),
+            y: ntb(671),
             zx: false,
             zy: false,
             ny: false,
@@ -1205,10 +1533,7 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [
-                    false, false, false, false, false, false, false, false, false, false, false,
-                    false, false, false, true, true
-                ],
+                out: ntb(452 + 671),
                 ng: false,
                 zr: false
             }
@@ -1216,14 +1541,8 @@ mod tests {
 
         // x-y
         let res = machine.process(AluInputs {
-            x: [
-                false, false, false, false, false, false, false, false, false, false, false, false,
-                false, false, false, true,
-            ],
-            y: [
-                false, false, false, false, false, false, false, false, false, false, false, false,
-                false, false, true, false,
-            ],
+            x: ntb(452),
+            y: ntb(671),
             zx: false,
             zy: false,
             ny: false,
@@ -1234,7 +1553,7 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [true; 16],
+                out: ntb(452 - 671),
                 ng: true,
                 zr: false
             }
@@ -1242,14 +1561,8 @@ mod tests {
 
         // y-x
         let res = machine.process(AluInputs {
-            x: [
-                false, false, false, false, false, false, false, false, false, false, false, false,
-                false, false, false, true,
-            ],
-            y: [
-                false, false, false, false, false, false, false, false, false, false, false, false,
-                false, false, true, false,
-            ],
+            x: ntb(452),
+            y: ntb(671),
             zx: false,
             zy: false,
             ny: true,
@@ -1260,10 +1573,7 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [
-                    false, false, false, false, false, false, false, false, false, false, false,
-                    false, false, false, false, true
-                ],
+                out: ntb(671 - 452),
                 ng: false,
                 zr: false
             }
@@ -1271,14 +1581,8 @@ mod tests {
 
         // x|y
         let res = machine.process(AluInputs {
-            x: [
-                false, false, false, false, false, false, false, false, false, false, false, false,
-                false, true, false, true,
-            ],
-            y: [
-                false, false, false, false, false, false, false, false, false, false, false, false,
-                false, false, true, false,
-            ],
+            x: ntb(452),
+            y: ntb(671),
             zx: false,
             zy: false,
             ny: true,
@@ -1289,10 +1593,7 @@ mod tests {
         assert_eq!(
             res,
             AluOutputs {
-                out: [
-                    false, false, false, false, false, false, false, false, false, false, false,
-                    false, false, true, true, true
-                ],
+                out: ntb(452 | 671),
                 ng: false,
                 zr: false
             }
@@ -1546,7 +1847,7 @@ mod tests {
     }
 
     #[test]
-    fn and2_gate_has_correct_truth_table() {
+    fn and16_gate_has_correct_truth_table() {
         let alloc = Bump::new();
         let mut machine = Machine::new(&alloc, And16::from);
         assert_eq!(
@@ -1558,83 +1859,39 @@ mod tests {
         );
         assert_eq!(
             machine.process(And16Inputs {
-                in1: [
-                    false, true, true, true, true, true, true, true, true, true, true, true, true,
-                    true, true, true
-                ],
-                in2: [
-                    true, true, true, true, true, true, true, true, true, true, true, true, true,
-                    true, true, true
-                ]
+                in1: ntb(i16::MAX),
+                in2: ntb(-1)
             }),
-            ArrayLen16 {
-                out: [
-                    false, true, true, true, true, true, true, true, true, true, true, true, true,
-                    true, true, true
-                ]
-            }
+            ArrayLen16 { out: ntb(i16::MAX) }
         );
         assert_eq!(
             machine.process(And16Inputs {
-                in1: [
-                    true, false, true, true, true, true, true, true, true, true, true, true, true,
-                    true, true, true
-                ],
-                in2: [
-                    true, true, true, true, true, true, true, true, true, true, true, true, true,
-                    true, true, true
-                ]
+                in1: ntb(-5),
+                in2: ntb(-1)
             }),
-            ArrayLen16 {
-                out: [
-                    true, false, true, true, true, true, true, true, true, true, true, true, true,
-                    true, true, true
-                ]
-            }
+            ArrayLen16 { out: ntb(-5) }
         );
         assert_eq!(
             machine.process(And16Inputs {
-                in1: [
-                    true, true, true, true, true, true, true, true, true, true, true, true, true,
-                    true, true, true
-                ],
-                in2: [
-                    false, true, true, true, true, true, true, true, true, true, true, true, true,
-                    true, true, true
-                ]
+                in1: ntb(-1),
+                in2: ntb(i16::MAX)
             }),
-            ArrayLen16 {
-                out: [
-                    false, true, true, true, true, true, true, true, true, true, true, true, true,
-                    true, true, true
-                ]
-            }
+            ArrayLen16 { out: ntb(i16::MAX) }
         );
         assert_eq!(
             machine.process(And16Inputs {
-                in1: [
-                    true, true, true, true, true, true, true, true, true, true, true, true, true,
-                    true, true, true
-                ],
-                in2: [
-                    true, false, true, true, true, true, true, true, true, true, true, true, true,
-                    true, true, true
-                ]
+                in1: ntb(-1),
+                in2: ntb(-765)
             }),
-            ArrayLen16 {
-                out: [
-                    true, false, true, true, true, true, true, true, true, true, true, true, true,
-                    true, true, true
-                ]
-            }
+            ArrayLen16 { out: ntb(-765) }
         );
         // ...
         assert_eq!(
             machine.process(And16Inputs {
-                in1: [false; 16],
-                in2: [false; 16]
+                in1: ntb(0),
+                in2: ntb(0)
             }),
-            ArrayLen16 { out: [false; 16] }
+            ArrayLen16 { out: ntb(0) }
         );
     }
 
@@ -2021,77 +2278,48 @@ mod tests {
 
         assert_eq!(
             machine.process(Adder16Inputs {
-                num1: [false; 16],
-                num2: [false; 16]
+                num1: ntb(0),
+                num2: ntb(0)
             }),
-            ArrayLen16 { out: [false; 16] },
-            "0+0 != 0"
+            ArrayLen16 { out: ntb(0) }
         );
 
         // check LSB and MSB values are represented
-        let mut num1 = [false; 16];
-        num1[15] = true;
-        let mut num2 = [false; 16];
-        num2[0] = true;
-        let mut out = [false; 16];
-        out[0] = true;
-        out[15] = true;
         assert_eq!(
-            machine.process(Adder16Inputs { num1, num2 }),
-            ArrayLen16 { out },
-            "1+32768 != 32769"
+            machine.process(Adder16Inputs {
+                num1: ntb(1),
+                num2: ntb(-i16::MAX)
+            }),
+            ArrayLen16 {
+                out: ntb(-i16::MAX + 1)
+            }
         );
 
         // check halfadder carry
-        let mut num1 = [false; 16];
-        num1[15] = true;
-        let mut num2 = [false; 16];
-        num2[15] = true;
-        let mut out = [false; 16];
-        out[15 - 1] = true;
         assert_eq!(
-            machine.process(Adder16Inputs { num1, num2 }),
-            ArrayLen16 { out },
-            "1+1 != 2"
+            machine.process(Adder16Inputs {
+                num1: ntb(1),
+                num2: ntb(1)
+            }),
+            ArrayLen16 { out: ntb(2) }
         );
 
         // check fulladder carry
-        let mut num1 = [false; 16];
-        num1[14] = true;
-        num1[15] = true;
-        let mut num2 = [false; 16];
-        num2[14] = true;
-        num2[15] = true;
-        let mut out = [false; 16];
-        out[14] = true;
-        out[13] = true;
         assert_eq!(
-            machine.process(Adder16Inputs { num1, num2 }),
-            ArrayLen16 { out },
-            "3+3 != 6"
+            machine.process(Adder16Inputs {
+                num1: ntb(3),
+                num2: ntb(3)
+            }),
+            ArrayLen16 { out: ntb(6) }
         );
 
         // check overflow over at MSB
-        let num1 = [true; 16];
-        let num2 = [true; 16];
-        let mut out = [true; 16];
-        out[15] = false;
         assert_eq!(
-            machine.process(Adder16Inputs { num1, num2 }),
-            ArrayLen16 { out },
-            "1+1 != 2"
-        );
-
-        // check two's complement
-        let mut num1 = [true; 16];
-        num1[14] = false;
-        let mut num2 = [false; 16];
-        num2[14] = true;
-        let out = [true; 16];
-        assert_eq!(
-            machine.process(Adder16Inputs { num1, num2 }),
-            ArrayLen16 { out },
-            "-3+2 != -1"
+            machine.process(Adder16Inputs {
+                num1: ntb(-1),
+                num2: ntb(1)
+            }),
+            ArrayLen16 { out: ntb(0) }
         );
     }
 
@@ -2100,12 +2328,9 @@ mod tests {
         let alloc = Bump::new();
         let mut machine = Machine::new(&alloc, Incrementer16::from);
 
-        let mut out = [false; 16];
-        out[15] = true;
         assert_eq!(
-            machine.process(Incrementer16Inputs { num: [false; 16] }),
-            ArrayLen16 { out },
-            "0+1 != 1"
+            machine.process(Incrementer16Inputs { num: ntb(1) }),
+            ArrayLen16 { out: ntb(2) }
         );
     }
 }
