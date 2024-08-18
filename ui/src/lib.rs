@@ -223,7 +223,7 @@ fn graph_output_wrapper(
     // graph the current component
     let node = MermaidNode {
         identifier: out.inner.id,
-        name: "OUT".into(),
+        name: format!("OUT {}", out.inner.label),
         type_: "OUT".into(),
     };
 
@@ -576,8 +576,8 @@ mod tests {
         let cin1 = ChipInput::new(&alloc, win1, "an input".into());
         let cin2 = ChipInput::new(&alloc, win2, "another input".into());
         let nand = Nand::new(&alloc, Input::ChipInput(&cin1), Input::ChipInput(&cin2));
-        let cout1 = ChipOutput::new(&alloc, ChipOutputType::NandOutput(nand));
-        let cout2 = ChipOutput::new(&alloc, ChipOutputType::ChipInput(cin1));
+        let cout1 = ChipOutput::new(&alloc, "out2".into(), ChipOutputType::NandOutput(nand));
+        let cout2 = ChipOutput::new(&alloc, "out1".into(), ChipOutputType::ChipInput(cin1));
         let outs = [
             Output::new(&ChipOutputWrapper::new(&alloc, &cout1, &TestChip {})),
             Output::new(&ChipOutputWrapper::new(&alloc, &cout2, &TestChip {})),
@@ -588,16 +588,16 @@ mod tests {
             "graph TD
 subgraph 1 [TestChip]
 {}IN(IN an input)
-{}IN(IN an input)-->{}OUT(OUT)
+{}IN(IN an input)-->{}OUT(OUT out1)
 {}IN(IN another input)
 {}IN(IN an input)-->{}NAND(NAND)
 {}IN(IN another input)-->{}NAND(NAND)
-{}NAND(NAND)-->{}OUT(OUT)
+{}NAND(NAND)-->{}OUT(OUT out2)
 end
 {}INPUT(INPUT)-->{}IN(IN an input)
-{}OUT(OUT)-->{}OUTPUT(OUTPUT)
+{}OUT(OUT out1)-->{}OUTPUT(OUTPUT)
 {}INPUT(INPUT)-->{}IN(IN another input)
-{}OUT(OUT)-->{}OUTPUT(OUTPUT)",
+{}OUT(OUT out2)-->{}OUTPUT(OUTPUT)",
             cin1.id,
             cin1.id,
             cout2.id,
@@ -644,8 +644,8 @@ end
         let cin1 = ChipInput::new(&alloc, in1, "an input".into());
         let cin2 = ChipInput::new(&alloc, in2, "another input".into());
         let nand = Nand::new(&alloc, Input::ChipInput(&cin1), Input::ChipInput(&cin2));
-        let out1 = ChipOutput::new(&alloc, ChipOutputType::NandOutput(nand));
-        let out2 = ChipOutput::new(&alloc, ChipOutputType::ChipInput(cin1));
+        let out1 = ChipOutput::new(&alloc, "out1".into(), ChipOutputType::NandOutput(nand));
+        let out2 = ChipOutput::new(&alloc, "out2".into(), ChipOutputType::ChipInput(cin1));
         let mout1 = Output::new(&ChipOutputWrapper::new(&alloc, &out1, &TestChip {}));
         let mout2 = Output::new(&ChipOutputWrapper::new(&alloc, &out2, &TestChip {}));
         let mouts = [mout1, mout2];
@@ -668,7 +668,7 @@ end
                 MermaidStatement::Line(MermaidLine {
                     from: MermaidNode {
                         identifier: out1.id,
-                        name: "OUT".into(),
+                        name: "OUT out1".into(),
                         type_: "OUT",
                     },
                     to: MermaidNode {
@@ -692,7 +692,7 @@ end
                 MermaidStatement::Line(MermaidLine {
                     from: MermaidNode {
                         identifier: out2.id,
-                        name: "OUT".into(),
+                        name: "OUT out2".into(),
                         type_: "OUT",
                     },
                     to: MermaidNode {
@@ -750,7 +750,7 @@ end
                             },
                             to: MermaidNode {
                                 identifier: out1.id,
-                                name: "OUT".into(),
+                                name: "OUT out1".into(),
                                 type_: "OUT",
                             },
                         }),
@@ -762,7 +762,7 @@ end
                             },
                             to: MermaidNode {
                                 identifier: out2.id,
-                                name: "OUT".into(),
+                                name: "OUT out2".into(),
                                 type_: "OUT",
                             },
                         }),
@@ -816,9 +816,10 @@ end
         let c2in1 = ChipInput::new(&alloc, Input::ChipInput(c1in1), "yet another input".into());
         let c2in2 = ChipInput::new(&alloc, Input::ChipInput(c1in2), "last input".into());
         let nand = Nand::new(&alloc, Input::ChipInput(&c2in1), Input::ChipInput(&c2in2));
-        let c2out = ChipOutput::new(&alloc, ChipOutputType::NandOutput(nand));
+        let c2out = ChipOutput::new(&alloc, "out1".into(), ChipOutputType::NandOutput(nand));
         let c1out = ChipOutput::new(
             &alloc,
+            "out2".into(),
             ChipOutputType::ChipOutput(ChipOutputWrapper::new(&alloc, c2out, &TestChip2 {})),
         );
         let mout1 = Output::new(&ChipOutputWrapper::new(&alloc, &c1out, &TestChip1 {}));

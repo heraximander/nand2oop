@@ -168,6 +168,7 @@ pub struct ChipOutput<'a> {
     value: Cell<bool>,
     iteration: Cell<u8>,
     pub id: u32,
+    pub label: String,
 }
 
 pub struct ChipOutputWrapper<'a> {
@@ -219,16 +220,21 @@ pub trait SizedChip<
 }
 
 impl<'a> ChipOutput<'a> {
-    pub fn new(alloc: &'a Bump, out: ChipOutputType<'a>) -> &'a Self {
-        ChipOutput::<'a>::new_from_option(alloc, Some(out))
+    pub fn new(alloc: &'a Bump, label: String, out: ChipOutputType<'a>) -> &'a Self {
+        ChipOutput::<'a>::new_from_option(alloc, label, Some(out))
     }
 
-    pub fn new_from_option(alloc: &'a Bump, out: Option<ChipOutputType<'a>>) -> &'a Self {
+    pub fn new_from_option(
+        alloc: &'a Bump,
+        label: String,
+        out: Option<ChipOutputType<'a>>,
+    ) -> &'a Self {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         alloc.alloc(ChipOutput {
             out: Cell::new(out),
             iteration: Cell::new(0),
             value: Cell::new(false),
+            label,
             id: COUNTER.fetch_add(1, Ordering::Relaxed),
         })
     }

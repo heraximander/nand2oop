@@ -6,7 +6,7 @@ Feature
 
 ## Status
 
-Open
+Completed
 
 ## Description
 

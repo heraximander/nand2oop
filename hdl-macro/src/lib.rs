@@ -83,7 +83,7 @@ pub fn chip(_: TokenStream, item: TokenStream) -> TokenStream {
                     quote! {{
                         let mut i = 0;
                         inputs.#arg_name.map(|x| {
-                            let ret = ChipInput::new(&alloc, x, #name_lit.to_owned()+&i.to_string());
+                            let ret = ChipInput::new(&alloc, x, #name_lit.to_owned()+"-"+&i.to_string());
                             i += 1;
                             ret
                         })
@@ -114,7 +114,7 @@ pub fn chip(_: TokenStream, item: TokenStream) -> TokenStream {
                     quote! {{
                         let mut i = 0;
                         #arg_name.map(|x| {
-                            let ret = ChipInput::new(&alloc, x, #name_lit.to_owned()+&i.to_string());
+                            let ret = ChipInput::new(&alloc, x, #name_lit.to_owned()+"-"+&i.to_string());
                             i += 1;
                             ret
                         })
@@ -185,9 +185,42 @@ pub fn chip(_: TokenStream, item: TokenStream) -> TokenStream {
                 #struct_name::<'a>::new(alloc,#mapped_chip_inputs)
             }
 
+            fn get_output_names() -> [String; {#struct_outputs_type::<bool/* type doesn't matter */>::get_arity()}] {
+                let field_names = #struct_outputs_type::<bool>::get_field_info();
+                let mut field_i = 0;
+                let mut array_i = field_names[0].1;
+                core::array::from_fn(|_| {
+                    let (field_name,arr_len) = field_names[field_i];
+                    if arr_len==0 {
+                        field_i += 1;
+                        field_name.to_owned()
+                    } else {
+                        array_i -= 1;
+                        let ret = format!("{}-{}", field_name, array_i);
+                        if array_i == 0 {
+                            field_i += 1;
+                            if field_i<field_names.len() {
+                                (_,array_i) = field_names[field_i];
+                            }
+                        };
+                        ret
+                    }
+                })
+            }
+
             fn new(alloc: &'a bumpalo::Bump, #function_args) -> &'a #struct_name<'a> {
                 let inner = #ident(alloc,#function_params);
-                let chipout = hdl::StructuredData::to_flat(inner).map(|in_| ChipOutput::new(alloc, in_));
+                let output_names = #struct_name::get_output_names();
+                let mut i = 0;
+                let chipout = hdl::StructuredData::to_flat(inner).map(|in_| {
+                    let ret = ChipOutput::new(
+                        alloc,
+                        output_names[i].clone(),
+                        in_
+                    );
+                    i += 1;
+                    ret
+                });
                 #struct_name::<'a>::from_output(alloc, chipout)
             }
 
@@ -211,7 +244,8 @@ pub fn chip(_: TokenStream, item: TokenStream) -> TokenStream {
 
         impl<'a> hdl::DefaultChip<'a,#struct_inputs_name_family, #arity, {#struct_outputs_type::<bool/* type doesn't matter */>::get_arity()}> for #struct_name<'a> {
             fn new(alloc: &'a Bump) -> &mut Self {
-                #struct_name::<'a>::from_output(alloc, core::array::from_fn(|_| ChipOutput::new_from_option(alloc, Option::None)))
+                let output_names = #struct_name::get_output_names();
+                #struct_name::<'a>::from_output(alloc, core::array::from_fn(|i| ChipOutput::new_from_option(alloc, output_names[i].clone(), Option::None)))
             }
 
             fn set_inputs(&'a self, alloc: &'a Bump, inputs: <#struct_inputs_name_family as hdl::StructuredDataFamily<#arity, {#struct_outputs_type::<bool/* type doesn't matter */>::get_arity()}>>::StructuredInput<Input<'a>>) {
@@ -347,6 +381,16 @@ pub fn chip_output_collection_derive(input: TokenStream) -> TokenStream {
         .map(|fi| Ident::new(&format!("o{}", fi), Span::call_site()))
         .collect::<Punctuated<_, Comma>>();
     let arity = LitInt::new(&numvars.to_string(), ast.span());
+    let num_fields = LitInt::new(&fields.len().to_string(), Span::call_site());
+
+    let field_info = field_names_and_array_lens
+        .clone()
+        .map(|(fieldname, arraylen)| {
+            let arraylen = LitInt::new(&arraylen.to_string(), Span::call_site());
+            let fieldname = LitStr::new(&fieldname.to_string(), Span::call_site());
+            quote! {(#fieldname, #arraylen)}
+        });
+    let field_info = field_info.collect::<Punctuated<_, Comma>>();
 
     quote! {
         impl #structured_data_generics hdl::StructuredData<T, #arity> for #name #generics {
@@ -366,6 +410,11 @@ pub fn chip_output_collection_derive(input: TokenStream) -> TokenStream {
         impl #generics #name #generics {
             const fn get_arity() -> usize {
                 #arity
+            }
+
+            // returns an array of tuple (fieldname,arraylen)
+            const fn get_field_info() -> [(&'static str,usize);#num_fields] {
+                [#field_info]
             }
         }
     }

@@ -77,6 +77,8 @@ mod tests {
             }),
             UnaryChipOutput { out: false }
         );
+
+        assert_eq!(machine.outputs[0].output.inner.label, "out");
     }
 
     #[test]
@@ -117,6 +119,8 @@ mod tests {
             }),
             TwoBitNumOutput { out: [true, true] }
         );
+
+        assert_eq!(machine.outputs[0].output.inner.label, "out-1");
     }
 
     #[test]
