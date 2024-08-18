@@ -1,5 +1,5 @@
 use bumpalo::Bump;
-use hdl::{Chip, ChipInput, ChipOutput, ChipOutputType, Input, Nand};
+use hdl::{ChipInput, ChipOutput, ChipOutputType, Input, Nand, SizedChip};
 use hdl_macro::chip;
 
 #[chip]

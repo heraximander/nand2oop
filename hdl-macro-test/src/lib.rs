@@ -47,7 +47,7 @@ mod tests {
             let nand = Nand::new(
                 &alloc,
                 Input::ChipInput(input[0]),
-                Input::ChipOutput(chip.get_out_sized(alloc)[0]),
+                Input::ChipOutput(chip.get_out(alloc)[0]),
             );
             [
                 ChipOutputType::NandOutput(nand),

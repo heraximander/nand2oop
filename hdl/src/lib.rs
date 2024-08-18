@@ -42,7 +42,7 @@ mod tests {
                 "TestChip"
             }
 
-            fn get_out(&'a self, _: &'a Bump) -> &'a [&ChipOutputWrapper] {
+            fn get_out_unsized(&'a self, _: &'a Bump) -> &'a [&ChipOutputWrapper] {
                 todo!()
             }
         }
@@ -90,7 +90,7 @@ end
                 "TestChip"
             }
 
-            fn get_out(&'a self, _: &'a Bump) -> &'a [&ChipOutputWrapper] {
+            fn get_out_unsized(&'a self, _: &'a Bump) -> &'a [&ChipOutputWrapper] {
                 todo!()
             }
         }
@@ -295,7 +295,7 @@ impl<'a, const NINPUT: usize, const NOUT: usize> Machine<'a, NINPUT, NOUT> {
     ) -> Self {
         let inputs = [0; NINPUT].map(|_| UserInput::new(&alloc));
         let chip = new_fn(&alloc, inputs.map(|in_| Input::UserInput(in_)));
-        let outputs = chip.get_out_sized(alloc).map(|out| Output::new(out));
+        let outputs = chip.get_out(alloc).map(|out| Output::new(out));
         let machine = Machine {
             inputs,
             outputs,
@@ -502,11 +502,11 @@ pub struct ChipOutputWrapper<'a> {
 pub trait Chip<'a> {
     fn get_id(&self) -> String;
     fn get_label(&self) -> &'static str;
-    fn get_out(&'a self, alloc: &'a Bump) -> &'a [&ChipOutputWrapper];
+    fn get_out_unsized(&'a self, alloc: &'a Bump) -> &'a [&ChipOutputWrapper];
 }
 
 pub trait SizedChip<'a, const NOUT: usize>: Chip<'a> {
-    fn get_out_sized(&self, alloc: &'a Bump) -> [&'a ChipOutputWrapper; NOUT];
+    fn get_out(&self, alloc: &'a Bump) -> [&'a ChipOutputWrapper; NOUT];
 }
 
 impl<'a> ChipOutput<'a> {
