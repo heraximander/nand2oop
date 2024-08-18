@@ -168,7 +168,7 @@ pub fn chip(_: TokenStream, item: TokenStream) -> TokenStream {
             identifier: u32
         }
 
-        #[derive(StructuredData)]
+        #[derive(StructuredData, Clone)]
         struct #struct_inputs_name<T> {
             #inputs
         }

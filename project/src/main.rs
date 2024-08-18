@@ -1071,6 +1071,54 @@ fn ram4k<'a>(
     }
 }
 
+#[chip]
+fn counter16<'a>(
+    alloc: &'a Bump,
+    in_: [&'a ChipInput<'a>; 16],
+    inc: &'a ChipInput<'a>,
+    load: &'a ChipInput<'a>,
+    reset: &'a ChipInput<'a>,
+    clock: &'a ChipInput<'a>,
+) -> ArrayLen16<ChipOutputType<'a>> {
+    let load_or_reset = Or::new(alloc, load.into(), reset.into()).get_out(alloc).out;
+    let load_or_reset_or_inc = Or::new(alloc, load_or_reset.into(), inc.into())
+        .get_out(alloc)
+        .out;
+    let (reg, _): (&Register16, &Incrementer16) = create_subchip(
+        alloc,
+        &|(inc,)| {
+            let loaded_value = Mux16::new(
+                alloc,
+                inc.get_out(alloc).out.ainto(),
+                in_.ainto(),
+                load.into(),
+            )
+            .get_out(alloc)
+            .out;
+            let loaded_value = Mux16::new(
+                alloc,
+                loaded_value.ainto(),
+                from_fn(|_| UserInput::new(alloc)).ainto(),
+                reset.into(),
+            )
+            .get_out(alloc)
+            .out;
+            Register16Inputs {
+                in_: loaded_value.ainto(),
+                load: load_or_reset_or_inc.into(),
+                clock: clock.into(),
+            }
+        },
+        &|(reg,)| Incrementer16Inputs {
+            num: reg.get_out(alloc).out.ainto(),
+        },
+    );
+
+    ArrayLen16 {
+        out: reg.get_out(alloc).out.ainto(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{i16, usize};
@@ -1097,6 +1145,85 @@ mod tests {
     fn number_to_bool_array_works_as_expected() {
         let num = ntb(5);
         assert_eq!(num, [true, false, true]);
+    }
+
+    #[test]
+    fn counter16_has_correct_truth_table() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Counter16::from);
+
+        // load bit
+        let mut inputs = Counter16Inputs {
+            in_: ntb(123),
+            inc: false,
+            load: true,
+            reset: false,
+            clock: true,
+        };
+
+        let res = machine.process(inputs.clone());
+        assert_eq!(res.out, ntb(0));
+
+        inputs.clock = false;
+        let res = machine.process(inputs.clone());
+        assert_eq!(res.out, ntb(123));
+
+        // reset bit
+        inputs.in_ = ntb(321);
+        inputs.reset = true;
+        inputs.clock = true;
+        let res = machine.process(inputs.clone());
+        assert_eq!(res.out, ntb(123));
+
+        inputs.clock = false;
+        let res = machine.process(inputs.clone());
+        assert_eq!(res.out, ntb(0));
+
+        // increment bit
+        let mut inputs = Counter16Inputs {
+            in_: ntb(0),
+            inc: true,
+            load: false,
+            reset: false,
+            clock: true,
+        };
+        let res = machine.process(inputs.clone());
+        assert_eq!(res.out, ntb(0));
+
+        inputs.clock = false;
+        let res = machine.process(inputs.clone());
+        assert_eq!(res.out, ntb(1));
+
+        inputs.clock = true;
+        let res = machine.process(inputs.clone());
+        assert_eq!(res.out, ntb(1));
+
+        inputs.clock = false;
+        let res = machine.process(inputs.clone());
+        assert_eq!(res.out, ntb(2));
+
+        // maintenance
+        let mut inputs = Counter16Inputs {
+            in_: ntb(456),
+            inc: false,
+            load: false,
+            reset: false,
+            clock: true,
+        };
+        let res = machine.process(inputs.clone());
+        assert_eq!(res.out, ntb(2));
+
+        inputs.clock = false;
+        let res = machine.process(inputs.clone());
+        assert_eq!(res.out, ntb(2));
+
+        inputs.clock = true;
+        let res = machine.process(inputs.clone());
+        assert_eq!(res.out, ntb(2));
+
+        inputs.clock = false;
+        let res = machine.process(inputs.clone());
+        assert_eq!(res.out, ntb(2));
     }
 
     #[test]
