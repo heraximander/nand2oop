@@ -260,13 +260,12 @@ pub fn chip_output_collection_derive(input: TokenStream) -> TokenStream {
         },
         _ => panic!("{}", STRUCT_DERIVE_ERROR_MSG),
     };
-    let (from_flat_mapping, _) = fields.iter().fold((vec![], 0), |(mut fieldlist, i), f| {
+    let field_names_and_array_lens = fields.iter().map(|f| {
         let fieldname = f
             .ident
             .clone()
             .expect("field must have a name for a non-tuple struct");
-
-        let new_i = match &f.ty {
+        let arraylen = match &f.ty {
             syn::Type::Array(ty) => {
                 let arraylen: usize = match &ty.len {
                     syn::Expr::Lit(lit) => match &lit.lit {
@@ -275,7 +274,17 @@ pub fn chip_output_collection_derive(input: TokenStream) -> TokenStream {
                     },
                     _ => panic!("{}", STRUCT_DERIVE_ERROR_MSG),
                 };
-
+                arraylen
+            }
+            syn::Type::Path(_) => 0,
+            _ => panic!("{}", STRUCT_DERIVE_ERROR_MSG),
+        };
+        (fieldname, arraylen)
+    });
+    let (from_flat_mapping, _) = field_names_and_array_lens.clone().fold(
+        (vec![], 0),
+        |(mut fieldlist, i), (fieldname, arraylen)| {
+            let new_i = if arraylen > 0 {
                 let i_subset = (i..arraylen + i)
                     .map(|x| Ident::new(&format!("in{x}"), Span::call_site()))
                     .collect::<Punctuated<_, Comma>>();
@@ -283,58 +292,37 @@ pub fn chip_output_collection_derive(input: TokenStream) -> TokenStream {
                     #fieldname: [#i_subset]
                 });
                 i + arraylen
-            }
-            syn::Type::Path(_) => {
+            } else {
                 let curr_ident = Ident::new(&format!("in{i}"), Span::call_site());
                 fieldlist.push(quote! {
                     #fieldname: #curr_ident
                 });
                 i + 1
-            }
-            _ => panic!("{}", STRUCT_DERIVE_ERROR_MSG),
-        };
-        (fieldlist, new_i)
-    });
+            };
+            (fieldlist, new_i)
+        },
+    );
     let inputs_from_flat_mapping = from_flat_mapping.iter().collect::<Punctuated<_, Comma>>();
-    let (destructured_inputs, _) = fields.iter().fold((vec![], 0), |(mut acc, i), elem| {
-        let new_i = match &elem.ty {
-            syn::Type::Array(ty) => {
-                let arraylen: usize = match &ty.len {
-                    syn::Expr::Lit(lit) => match &lit.lit {
-                        syn::Lit::Int(int) => int.to_string().parse().unwrap(),
-                        _ => panic!("shouldn't get here"),
-                    },
-                    _ => panic!("{}", STRUCT_DERIVE_ERROR_MSG),
-                };
-
-                for new_i in i..i + arraylen {
-                    acc.push(Ident::new(&format!("in{}", new_i), Span::call_site()));
-                }
-                i + arraylen
-            }
-            syn::Type::Path(_) => {
-                acc.push(Ident::new(&format!("in{i}"), Span::call_site()));
-                i + 1
-            }
-            _ => panic!("{}", STRUCT_DERIVE_ERROR_MSG),
-        };
-        (acc, new_i)
-    });
-    let destructured_inputs = destructured_inputs.iter().collect::<Punctuated<_, Comma>>();
-    let (destructing_var_names, numvars) = fields.iter().fold((vec![], 0), |(mut acc, i), elem| {
-        let fieldname = elem
-            .ident
+    let (destructured_inputs, _) =
+        field_names_and_array_lens
             .clone()
-            .expect("field must have a name for a non-tuple struct");
-        let new_i = match &elem.ty {
-            syn::Type::Array(ty) => {
-                let arraylen: usize = match &ty.len {
-                    syn::Expr::Lit(lit) => match &lit.lit {
-                        syn::Lit::Int(int) => int.to_string().parse().unwrap(),
-                        _ => panic!("shouldn't get here"),
-                    },
-                    _ => panic!("{}", STRUCT_DERIVE_ERROR_MSG),
+            .fold((vec![], 0), |(mut acc, i), (_, arraylen)| {
+                let new_i = if arraylen > 0 {
+                    for new_i in i..i + arraylen {
+                        acc.push(Ident::new(&format!("in{}", new_i), Span::call_site()));
+                    }
+                    i + arraylen
+                } else {
+                    acc.push(Ident::new(&format!("in{i}"), Span::call_site()));
+                    i + 1
                 };
+                (acc, new_i)
+            });
+    let destructured_inputs = destructured_inputs.iter().collect::<Punctuated<_, Comma>>();
+    let (destructing_var_names, numvars) = field_names_and_array_lens.clone().fold(
+        (vec![], 0),
+        |(mut acc, i), (fieldname, arraylen)| {
+            let new_i = if arraylen > 0 {
                 let destructured_var_names = (i..i + arraylen)
                     .map(|elem| Ident::new(&format!("o{}", elem), Span::call_site()))
                     .collect::<Punctuated<_, Comma>>();
@@ -342,18 +330,16 @@ pub fn chip_output_collection_derive(input: TokenStream) -> TokenStream {
                     let [#destructured_var_names] = self.#fieldname
                 });
                 i + arraylen
-            }
-            syn::Type::Path(_) => {
+            } else {
                 let destructured_var_name = Ident::new(&format!("o{}", i), Span::call_site());
                 acc.push(quote! {
                     let #destructured_var_name = self.#fieldname
                 });
                 i + 1
-            }
-            _ => panic!("{}", STRUCT_DERIVE_ERROR_MSG),
-        };
-        (acc, new_i)
-    });
+            };
+            (acc, new_i)
+        },
+    );
     let destructing_var_names = destructing_var_names
         .iter()
         .collect::<Punctuated<_, Semi>>();
