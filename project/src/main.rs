@@ -1128,13 +1128,3 @@ mod tests {
 fn main() {
     println!("Hello, world!");
 }
-
-// TODO, ideally after I inplement the ALU but if it's painful doing the ALU without them, then well...:
-// 2. Add more legible diagramming:
-//    1. At least add the names for inputs and outputs to the diagrams...
-//    2. Add an interactive version which hides the chip details until the user clicks on the chip
-// 3. Add muxn chip? Using generic constants to decide how large the outputs are
-// 4. Rename and refactor UserInput to be a general set-value Input
-// 5. Make derive StructuredData macro and chip macro more robust, eg to generic params not named 'T',
-//    find a way to get rid of `::get_arity()` on StructuredData macro, so `chip` doesn't rely on
-//    StructuredData macro
