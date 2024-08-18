@@ -53,14 +53,14 @@ mod tests {
             in1: &'a ChipInput<'a>,
             in2: &'a ChipInput<'a>,
         ) -> UnaryChipOutput<ChipOutputType<'a>> {
-            let nand = Nand::new(&alloc, Input::ChipInput(in1), Input::ChipInput(in2));
+            let nand = Nand::new(&alloc, in1.into(), in2.into());
             UnaryChipOutput {
                 out: ChipOutputType::NandOutput(nand),
             }
         }
 
         let alloc = Bump::new();
-        let mut machine = Machine::new(&alloc, Testchip::new);
+        let mut machine = Machine::new(&alloc, Testchip::from);
         assert_eq!(
             machine.process(TestchipInputs {
                 in1: true,
@@ -87,22 +87,18 @@ mod tests {
             bit: &'a ChipInput<'a>,
         ) -> TwoBitNumOutput<ChipOutputType<'a>> {
             let bitwise_nand = [
-                Nand::new(alloc, Input::ChipInput(num1[0]), Input::ChipInput(num2[0])),
-                Nand::new(alloc, Input::ChipInput(num1[1]), Input::ChipInput(num2[1])),
+                Nand::new(alloc, num1[0].into(), num2[0].into()),
+                Nand::new(alloc, num1[1].into(), num2[1].into()),
             ];
             TwoBitNumOutput {
                 out: bitwise_nand.map(|nand| {
-                    ChipOutputType::NandOutput(Nand::new(
-                        alloc,
-                        Input::ChipInput(bit),
-                        Input::NandInput(nand),
-                    ))
+                    ChipOutputType::NandOutput(Nand::new(alloc, bit.into(), nand.into()))
                 }),
             }
         }
 
         let alloc = Bump::new();
-        let mut machine = Machine::new(&alloc, Testchip::new);
+        let mut machine = Machine::new(&alloc, Testchip::from);
         assert_eq!(
             machine.process(TestchipInputs {
                 num1: [true, true],
@@ -129,7 +125,7 @@ mod tests {
             in1: &'a ChipInput<'a>,
             in2: &'a ChipInput<'a>,
         ) -> UnaryChipOutput<ChipOutputType<'a>> {
-            let nand = Nand::new(&alloc, Input::ChipInput(in1), Input::ChipInput(in2));
+            let nand = Nand::new(&alloc, in1.into(), in2.into());
             UnaryChipOutput {
                 out: ChipOutputType::NandOutput(nand),
             }
@@ -141,18 +137,8 @@ mod tests {
             in1: &'a ChipInput<'a>,
             in2: &'a ChipInput<'a>,
         ) -> BinaryChipOutput<ChipOutputType<'a>> {
-            let chip = Testchip::new(
-                alloc,
-                TestchipInputs {
-                    in1: Input::ChipInput(in1),
-                    in2: Input::ChipInput(in2),
-                },
-            );
-            let nand = Nand::new(
-                &alloc,
-                Input::ChipInput(in1),
-                Input::ChipOutput(chip.get_out(alloc).out),
-            );
+            let chip = Testchip::new(alloc, in1.into(), in2.into());
+            let nand = Nand::new(&alloc, in1.into(), chip.get_out(alloc).out.into());
             BinaryChipOutput::<_> {
                 out1: ChipOutputType::NandOutput(nand),
                 out2: ChipOutputType::ChipInput(in2),
@@ -160,7 +146,7 @@ mod tests {
         }
 
         let alloc = Bump::new();
-        let mut machine = Machine::new(&alloc, Testchip2::new);
+        let mut machine = Machine::new(&alloc, Testchip2::from);
         assert_eq!(
             machine.process(Testchip2Inputs {
                 in1: true,

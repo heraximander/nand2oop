@@ -68,12 +68,7 @@ pub fn chip(_: TokenStream, item: TokenStream) -> TokenStream {
 
     let mapped_chip_inputs = input_name_to_type
         .iter()
-        .map(|(arg_name, arg_type)| match arg_type {
-            ArgType::Input => quote! { ChipInput::new(&alloc, inputs.#arg_name ) },
-            ArgType::InputArray(_) => {
-                quote! { inputs.#arg_name.map(|x| ChipInput::new(&alloc, x )) }
-            }
-        })
+        .map(|(arg_name, _)| quote!(inputs.#arg_name))
         .collect::<Punctuated<_, Comma>>();
     let inputs = input_name_to_type
         .iter()
@@ -81,6 +76,22 @@ pub fn chip(_: TokenStream, item: TokenStream) -> TokenStream {
             ArgType::Input => quote! { #arg_name: T },
             ArgType::InputArray(len) => {
                 quote! { #arg_name: [T;#len] }
+            }
+        })
+        .collect::<Punctuated<_, Comma>>();
+    let function_params = input_name_to_type
+        .iter()
+        .map(|(arg_name, ty)| match ty {
+            ArgType::Input => quote! {ChipInput::new(&alloc, #arg_name) },
+            ArgType::InputArray(_) => quote! {#arg_name.map(|x| ChipInput::new(&alloc, x)) },
+        })
+        .collect::<Punctuated<_, Comma>>();
+    let function_args = input_name_to_type
+        .iter()
+        .map(|(arg_name, arg_type)| match arg_type {
+            ArgType::Input => quote! { #arg_name: Input<'a> },
+            ArgType::InputArray(len) => {
+                quote! { #arg_name: [Input<'a>;#len] }
             }
         })
         .collect::<Punctuated<_, Comma>>();
@@ -133,8 +144,12 @@ pub fn chip(_: TokenStream, item: TokenStream) -> TokenStream {
 
         #ast
         impl<'a> #struct_name<'a> {
-            fn new(alloc: &'a bumpalo::Bump, inputs: #struct_inputs_name<Input<'a>>) -> &'a #struct_name<'a> {
-                let inner = #ident(alloc,#mapped_chip_inputs);
+            fn from(alloc: &'a bumpalo::Bump, inputs: #struct_inputs_name<Input<'a>>) -> &'a #struct_name<'a> {
+                #struct_name::<'a>::new(alloc,#mapped_chip_inputs)
+            }
+
+            fn new(alloc: &'a bumpalo::Bump, #function_args) -> &'a #struct_name<'a> {
+                let inner = #ident(alloc,#function_params);
                 let chipout = hdl::StructuredData::to_flat(inner).map(|in_| ChipOutput::new(alloc, in_));
                 static COUNTER: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
                 alloc.alloc(#struct_name{
