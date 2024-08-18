@@ -313,6 +313,32 @@ fn andmult4<'a>(
     }
 }
 
+#[chip]
+fn ormult16<'a>(
+    alloc: &'a Bump,
+    in_: [&'a ChipInput<'a>; 16],
+) -> UnaryChipOutput<ChipOutputType<'a>> {
+    let initial_nor = Or::new(
+        alloc,
+        OrInputs {
+            in1: Input::ChipInput(in_[0]),
+            in2: Input::ChipInput(in_[1]),
+        },
+    );
+    let out = in_.iter().skip(2).fold(initial_nor, |acc, in_| {
+        Or::new(
+            alloc,
+            OrInputs {
+                in1: Input::ChipInput(in_),
+                in2: Input::ChipOutput(acc.get_out(alloc).out),
+            },
+        )
+    });
+    UnaryChipOutput {
+        out: ChipOutputType::ChipOutput(out.get_out(alloc).out),
+    }
+}
+
 #[derive(StructuredData, PartialEq, Debug)]
 struct AdderOut<T> {
     sum: T,
@@ -447,12 +473,718 @@ fn incrementer16<'a>(
     ArrayLen16 { out }
 }
 
+#[derive(StructuredData, PartialEq, Debug)]
+struct AluOutputs<T> {
+    out: [T; 16],
+    zr: T,
+    ng: T,
+}
+
+#[chip]
+fn zeronum<'a>(
+    alloc: &'a Bump,
+    num: [&'a ChipInput<'a>; 16],
+    zero: &'a ChipInput<'a>,
+) -> ArrayLen16<ChipOutputType<'a>> {
+    let not_zero = Not16::new(
+        alloc,
+        Not16Inputs {
+            input: array::from_fn(|_| Input::ChipInput(zero)),
+        },
+    );
+    let zero_num = And16::new(
+        alloc,
+        And16Inputs {
+            in1: num.map(|xi| Input::ChipInput(xi)),
+            in2: not_zero.get_out(alloc).out.map(|xi| Input::ChipOutput(xi)),
+        },
+    );
+
+    ArrayLen16 {
+        out: zero_num
+            .get_out(alloc)
+            .out
+            .map(|z| ChipOutputType::ChipOutput(z)),
+    }
+}
+
+#[chip]
+fn negatenum<'a>(
+    alloc: &'a Bump,
+    num: [&'a ChipInput<'a>; 16],
+    negate: &'a ChipInput<'a>,
+) -> ArrayLen16<ChipOutputType<'a>> {
+    let not = Not16::new(
+        alloc,
+        Not16Inputs {
+            input: num.map(|o| Input::ChipInput(o)),
+        },
+    );
+    let mux_not_x = Mux16::new(
+        alloc,
+        Mux16Inputs {
+            in1: num.map(|o| Input::ChipInput(o)),
+            in2: not.get_out(alloc).out.map(|o| Input::ChipOutput(o)),
+            sel: Input::ChipInput(negate),
+        },
+    ); // note: it might be more power efficient in real hardware to demux first rather than
+       // mux at the end. I'm not a real engineer though, so I don't know
+    ArrayLen16 {
+        out: mux_not_x
+            .get_out(alloc)
+            .out
+            .map(|o| ChipOutputType::ChipOutput(o)),
+    }
+}
+
+#[chip]
+fn andorplus<'a>(
+    alloc: &'a Bump,
+    num1: [&'a ChipInput<'a>; 16],
+    num2: [&'a ChipInput<'a>; 16],
+    isadd: &'a ChipInput<'a>,
+) -> ArrayLen16<ChipOutputType<'a>> {
+    let add_nums = Adder16::new(
+        alloc,
+        Adder16Inputs {
+            num1: num1.map(Input::ChipInput),
+            num2: num2.map(Input::ChipInput), // FIXME: apply this pattern to other chips
+        },
+    );
+    let and_nums = And16::new(
+        alloc,
+        And16Inputs {
+            in1: num1.map(Input::ChipInput),
+            in2: num2.map(Input::ChipInput),
+        },
+    );
+    let mux = Mux16::new(
+        alloc,
+        Mux16Inputs {
+            in1: and_nums.get_out(alloc).out.map(Input::ChipOutput),
+            in2: add_nums.get_out(alloc).out.map(Input::ChipOutput),
+            sel: Input::ChipInput(isadd),
+        },
+    );
+    ArrayLen16 {
+        out: mux.get_out(alloc).out.map(ChipOutputType::ChipOutput),
+    }
+}
+
+#[chip]
+fn alu<'a>(
+    alloc: &'a Bump,
+    x: [&'a ChipInput<'a>; 16],
+    y: [&'a ChipInput<'a>; 16],
+    zx: &'a ChipInput<'a>,
+    zy: &'a ChipInput<'a>,
+    nx: &'a ChipInput<'a>,
+    ny: &'a ChipInput<'a>,
+    f: &'a ChipInput<'a>,
+    no: &'a ChipInput<'a>,
+) -> AluOutputs<ChipOutputType<'a>> {
+    let zero_x = Zeronum::new(
+        alloc,
+        ZeronumInputs {
+            num: x.map(|n| Input::ChipInput(n)),
+            zero: Input::ChipInput(zx),
+        },
+    );
+    let zero_y = Zeronum::new(
+        alloc,
+        ZeronumInputs {
+            num: y.map(|n| Input::ChipInput(n)),
+            zero: Input::ChipInput(zy),
+        },
+    );
+    let not_x = Negatenum::new(
+        alloc,
+        NegatenumInputs {
+            num: zero_x.get_out(alloc).out.map(|o| Input::ChipOutput(o)),
+            negate: Input::ChipInput(nx),
+        },
+    );
+    let not_y = Negatenum::new(
+        alloc,
+        NegatenumInputs {
+            num: zero_y.get_out(alloc).out.map(|o| Input::ChipOutput(o)),
+            negate: Input::ChipInput(ny),
+        },
+    );
+    let func = Andorplus::new(
+        alloc,
+        AndorplusInputs {
+            num1: not_x.get_out(alloc).out.map(Input::ChipOutput),
+            num2: not_y.get_out(alloc).out.map(Input::ChipOutput),
+            isadd: Input::ChipInput(f),
+        },
+    );
+    let negate_result = Negatenum::new(
+        alloc,
+        NegatenumInputs {
+            num: func.get_out(alloc).out.map(Input::ChipOutput),
+            negate: Input::ChipInput(no),
+        },
+    );
+    let is_non_zero = Ormult16::new(
+        alloc,
+        Ormult16Inputs {
+            in_: negate_result.get_out(alloc).out.map(Input::ChipOutput),
+        },
+    );
+    let is_zero = Not::new(
+        alloc,
+        NotInputs {
+            in_: Input::ChipOutput(is_non_zero.get_out(alloc).out),
+        },
+    );
+    AluOutputs {
+        out: negate_result
+            .get_out(alloc)
+            .out
+            .map(ChipOutputType::ChipOutput),
+        zr: ChipOutputType::ChipInput(ChipInput::new(
+            alloc,
+            Input::ChipOutput(is_zero.get_out(alloc).out),
+        )),
+        ng: ChipOutputType::ChipInput(ChipInput::new(
+            alloc,
+            Input::ChipOutput(negate_result.get_out(alloc).out[0]),
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use bumpalo::Bump;
     use hdl::Machine;
 
     use crate::*;
+
+    #[test]
+    fn alu_chip_has_correct_truth_table() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Alu::new);
+
+        // addition works
+        let res = machine.process(AluInputs {
+            x: [
+                false, false, false, false, false, false, false, false, false, false, false, false,
+                false, false, false, true,
+            ],
+            y: [
+                false, false, false, false, false, false, false, false, false, false, false, false,
+                false, false, false, true,
+            ],
+            zx: false,
+            zy: false,
+            ny: false,
+            nx: false,
+            f: true,
+            no: false,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, true, false
+                ],
+                zr: false,
+                ng: false
+            }
+        );
+
+        // zx works
+        let res = machine.process(AluInputs {
+            x: [
+                false, false, false, false, false, false, false, false, false, false, false, false,
+                false, false, false, true,
+            ],
+            y: [
+                false, false, false, false, false, false, false, false, false, false, false, false,
+                false, false, true, false,
+            ],
+            zx: true,
+            zy: false,
+            ny: false,
+            nx: false,
+            f: true,
+            no: false,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, true, false
+                ],
+                zr: false,
+                ng: false
+            }
+        );
+
+        // zy works
+        let res = machine.process(AluInputs {
+            x: [
+                false, false, false, false, false, false, false, false, false, false, false, false,
+                false, false, false, true,
+            ],
+            y: [
+                false, false, false, false, false, false, false, false, false, false, false, false,
+                false, false, true, false,
+            ],
+            zx: false,
+            zy: true,
+            ny: false,
+            nx: false,
+            f: true,
+            no: false,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, true
+                ],
+                zr: false,
+                ng: false
+            }
+        );
+
+        // nx works
+        let res = machine.process(AluInputs {
+            x: [false; 16],
+            y: [true; 16],
+            zx: false,
+            zy: false,
+            ny: false,
+            nx: true,
+            f: true,
+            no: false,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [
+                    true, true, true, true, true, true, true, true, true, true, true, true, true,
+                    true, true, false
+                ],
+                zr: false,
+                ng: true
+            }
+        );
+
+        // ny works
+        let res = machine.process(AluInputs {
+            x: [true; 16],
+            y: [false; 16],
+            zx: false,
+            zy: false,
+            ny: true,
+            nx: false,
+            f: true,
+            no: false,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [
+                    true, true, true, true, true, true, true, true, true, true, true, true, true,
+                    true, true, false
+                ],
+                zr: false,
+                ng: true
+            }
+        );
+
+        // no works
+        let res = machine.process(AluInputs {
+            x: [true; 16],
+            y: [true; 16],
+            zx: false,
+            zy: false,
+            ny: false,
+            nx: false,
+            f: true,
+            no: true,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, true
+                ],
+                ng: false,
+                zr: false
+            }
+        );
+
+        // and works
+        let res = machine.process(AluInputs {
+            x: [true; 16],
+            y: [true; 16],
+            zx: false,
+            zy: false,
+            ny: false,
+            nx: false,
+            f: false,
+            no: false,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [true; 16],
+                ng: true,
+                zr: false
+            }
+        );
+
+        // now I'll just put in the rest of the truth table as per the book
+        // 0
+        let res = machine.process(AluInputs {
+            x: [true; 16],
+            y: [true; 16],
+            zx: true,
+            zy: true,
+            ny: false,
+            nx: false,
+            f: true,
+            no: false,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [false; 16],
+                ng: false,
+                zr: true
+            }
+        );
+
+        // 1
+        let res = machine.process(AluInputs {
+            x: [true; 16],
+            y: [true; 16],
+            zx: true,
+            zy: true,
+            ny: true,
+            nx: true,
+            f: true,
+            no: true,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, true
+                ],
+                ng: false,
+                zr: false
+            }
+        );
+
+        // -1
+        let res = machine.process(AluInputs {
+            x: [true; 16],
+            y: [true; 16],
+            zx: true,
+            zy: true,
+            ny: false,
+            nx: true,
+            f: true,
+            no: false,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [true; 16],
+                ng: true,
+                zr: false
+            }
+        );
+
+        // x
+        let res = machine.process(AluInputs {
+            x: [true; 16],
+            y: [false; 16],
+            zx: false,
+            zy: true,
+            ny: true,
+            nx: false,
+            f: false,
+            no: false,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [true; 16],
+                ng: true,
+                zr: false
+            }
+        );
+
+        // y
+        let res = machine.process(AluInputs {
+            x: [false; 16],
+            y: [true; 16],
+            zx: true,
+            zy: false,
+            ny: false,
+            nx: true,
+            f: false,
+            no: false,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [true; 16],
+                ng: true,
+                zr: false
+            }
+        );
+
+        // !x
+        let res = machine.process(AluInputs {
+            x: [true; 16],
+            y: [false; 16],
+            zx: false,
+            zy: true,
+            ny: true,
+            nx: false,
+            f: false,
+            no: true,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [false; 16],
+                ng: false,
+                zr: true
+            }
+        );
+
+        // !y
+        let res = machine.process(AluInputs {
+            x: [true; 16],
+            y: [false; 16],
+            zx: true,
+            zy: false,
+            ny: false,
+            nx: true,
+            f: false,
+            no: true,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [true; 16],
+                ng: true,
+                zr: false
+            }
+        );
+
+        // x+1
+        let res = machine.process(AluInputs {
+            x: [true; 16],
+            y: [false; 16],
+            zx: false,
+            zy: true,
+            ny: true,
+            nx: true,
+            f: true,
+            no: true,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [false; 16],
+                ng: false,
+                zr: true
+            }
+        );
+
+        // y+1
+        let res = machine.process(AluInputs {
+            x: [true; 16],
+            y: [false; 16],
+            zx: true,
+            zy: false,
+            ny: true,
+            nx: true,
+            f: true,
+            no: true,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, true
+                ],
+                ng: false,
+                zr: false
+            }
+        );
+
+        // x-1
+        let res = machine.process(AluInputs {
+            x: [true; 16],
+            y: [false; 16],
+            zx: false,
+            zy: true,
+            ny: true,
+            nx: false,
+            f: true,
+            no: false,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [
+                    true, true, true, true, true, true, true, true, true, true, true, true, true,
+                    true, true, false
+                ],
+                ng: true,
+                zr: false
+            }
+        );
+
+        // y-1
+        let res = machine.process(AluInputs {
+            x: [true; 16],
+            y: [false; 16],
+            zx: true,
+            zy: false,
+            ny: false,
+            nx: true,
+            f: true,
+            no: false,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [true; 16],
+                ng: true,
+                zr: false
+            }
+        );
+
+        // x+y
+        let res = machine.process(AluInputs {
+            x: [
+                false, false, false, false, false, false, false, false, false, false, false, false,
+                false, false, false, true,
+            ],
+            y: [
+                false, false, false, false, false, false, false, false, false, false, false, false,
+                false, false, true, false,
+            ],
+            zx: false,
+            zy: false,
+            ny: false,
+            nx: false,
+            f: true,
+            no: false,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, true, true
+                ],
+                ng: false,
+                zr: false
+            }
+        );
+
+        // x-y
+        let res = machine.process(AluInputs {
+            x: [
+                false, false, false, false, false, false, false, false, false, false, false, false,
+                false, false, false, true,
+            ],
+            y: [
+                false, false, false, false, false, false, false, false, false, false, false, false,
+                false, false, true, false,
+            ],
+            zx: false,
+            zy: false,
+            ny: false,
+            nx: true,
+            f: true,
+            no: true,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [true; 16],
+                ng: true,
+                zr: false
+            }
+        );
+
+        // y-x
+        let res = machine.process(AluInputs {
+            x: [
+                false, false, false, false, false, false, false, false, false, false, false, false,
+                false, false, false, true,
+            ],
+            y: [
+                false, false, false, false, false, false, false, false, false, false, false, false,
+                false, false, true, false,
+            ],
+            zx: false,
+            zy: false,
+            ny: true,
+            nx: false,
+            f: true,
+            no: true,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, true
+                ],
+                ng: false,
+                zr: false
+            }
+        );
+
+        // x|y
+        let res = machine.process(AluInputs {
+            x: [
+                false, false, false, false, false, false, false, false, false, false, false, false,
+                false, true, false, true,
+            ],
+            y: [
+                false, false, false, false, false, false, false, false, false, false, false, false,
+                false, false, true, false,
+            ],
+            zx: false,
+            zy: false,
+            ny: true,
+            nx: true,
+            f: false,
+            no: true,
+        });
+        assert_eq!(
+            res,
+            AluOutputs {
+                out: [
+                    false, false, false, false, false, false, false, false, false, false, false,
+                    false, false, true, true, true
+                ],
+                ng: false,
+                zr: false
+            }
+        );
+    }
 
     #[test]
     fn not_gate_has_correct_truth_table() {
@@ -1150,6 +1882,6 @@ mod tests {
 
 fn main() {
     let alloc = Bump::new();
-    let machine = Machine::new(&alloc, Fulladder::new);
+    let machine = Machine::new(&alloc, Alu::new);
     ui::start_interactive_server(&machine, 3000);
 }
