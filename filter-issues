@@ -1,0 +1,2 @@
+#!/bin/sh
+grep -Pirzl "## Status\n\n$1" issues/
