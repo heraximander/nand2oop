@@ -9,15 +9,16 @@ use hdl::{
     StructuredDataFamily, UserInput,
 };
 
-#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct MermaidNode {
     identifier: u32,
-    name: &'static str,
+    type_: &'static str,
+    name: String,
 }
 
 impl MermaidNode {
     fn get_label(&self) -> String {
-        format!("{}{}", self.identifier, self.name)
+        format!("{}{}", self.identifier, self.type_)
     }
 }
 
@@ -75,8 +76,8 @@ impl MermaidGraph {
                 MermaidStatement::Line(line) => {
                     let left_label = line.from.get_label();
                     let right_label = line.to.get_label();
-                    let left_name = line.from.name;
-                    let right_name = line.to.name;
+                    let left_name = &line.from.name;
+                    let right_name = &line.to.name;
                     res += &format!("\n{left_label}({left_name})-->{right_label}({right_name})");
                 }
                 MermaidStatement::Node(node) => {
@@ -127,7 +128,8 @@ fn graph_output(out: &Output<'_>, graph_inputs: &mut GraphInputs<'_>) {
             from: node,
             to: MermaidNode {
                 identifier: out.identifier,
-                name: "OUTPUT",
+                name: "OUTPUT".into(),
+                type_: "OUTPUT".into(),
             },
         }));
 }
@@ -142,7 +144,8 @@ struct GraphInputs<'a> {
 fn graph_user_input(in_: &UserInput, node_set: &mut HashSet<String>) -> MermaidNode {
     let node = MermaidNode {
         identifier: in_.id,
-        name: "INPUT",
+        name: "INPUT".into(),
+        type_: "INPUT".into(),
     };
 
     // make sure we haven't already expanded this node
@@ -165,7 +168,8 @@ fn graph_input(in_: Input<'_>, graph_inputs: &mut GraphInputs<'_>) -> MermaidNod
 fn graph_chip_input(in_: &ChipInput<'_>, graph_inputs: &mut GraphInputs<'_>) -> MermaidNode {
     let node = MermaidNode {
         identifier: in_.id,
-        name: "IN",
+        name: format!("IN {}", in_.label),
+        type_: "IN".into(),
     };
 
     // make sure we haven't already expanded this node
@@ -189,14 +193,16 @@ fn graph_chip_input(in_: &ChipInput<'_>, graph_inputs: &mut GraphInputs<'_>) -> 
 
     if is_node_shown(&graph_inputs.path, graph_inputs.show_chips) {
         let subgraph = graph_inputs.graph_map.get_subgraph(&graph_inputs.path);
-        subgraph.statements.push(MermaidStatement::Node(node));
+        subgraph
+            .statements
+            .push(MermaidStatement::Node(node.clone()));
 
         let current_graph = graph_inputs.graph_map.get_subgraph(&new_path);
         current_graph
             .statements
             .push(MermaidStatement::Line(MermaidLine {
                 from: prev_node,
-                to: node,
+                to: node.clone(),
             }));
     }
     node
@@ -217,7 +223,8 @@ fn graph_output_wrapper(
     // graph the current component
     let node = MermaidNode {
         identifier: out.inner.id,
-        name: "OUT",
+        name: "OUT".into(),
+        type_: "OUT".into(),
     };
 
     // make sure we haven't already expanded this node
@@ -274,10 +281,12 @@ fn graph_output_wrapper(
                 .statements
                 .push(MermaidStatement::Line(MermaidLine {
                     from: prev_node,
-                    to: node,
+                    to: node.clone(),
                 }));
         } else {
-            subgraph.statements.push(MermaidStatement::Node(node))
+            subgraph
+                .statements
+                .push(MermaidStatement::Node(node.clone()))
         }
     }
 
@@ -300,7 +309,8 @@ fn graph_nand(nand: &Nand<'_>, graph_inputs: &mut GraphInputs<'_>) -> MermaidNod
     // make sure we haven't already expanded this node
     let node = MermaidNode {
         identifier: nand.identifier,
-        name: "NAND",
+        name: "NAND".into(),
+        type_: "NAND",
     };
     if graph_inputs.node_set.contains(&node.get_label()) {
         return node;
@@ -333,13 +343,13 @@ fn graph_nand(nand: &Nand<'_>, graph_inputs: &mut GraphInputs<'_>) -> MermaidNod
             .statements
             .push(MermaidStatement::Line(MermaidLine {
                 from: from_node_1,
-                to: node,
+                to: node.clone(),
             }));
         current_graph
             .statements
             .push(MermaidStatement::Line(MermaidLine {
                 from: from_node_2,
-                to: node,
+                to: node.clone(),
             }));
     }
 
@@ -563,8 +573,8 @@ mod tests {
         let win1 = Input::UserInput(in1);
         let in2 = UserInput::new(&alloc);
         let win2 = Input::UserInput(in2);
-        let cin1 = ChipInput::new(&alloc, win1);
-        let cin2 = ChipInput::new(&alloc, win2);
+        let cin1 = ChipInput::new(&alloc, win1, "an input".into());
+        let cin2 = ChipInput::new(&alloc, win2, "another input".into());
         let nand = Nand::new(&alloc, Input::ChipInput(&cin1), Input::ChipInput(&cin2));
         let cout1 = ChipOutput::new(&alloc, ChipOutputType::NandOutput(nand));
         let cout2 = ChipOutput::new(&alloc, ChipOutputType::ChipInput(cin1));
@@ -577,16 +587,16 @@ mod tests {
         let expected = format!(
             "graph TD
 subgraph 1 [TestChip]
-{}IN(IN)
-{}IN(IN)-->{}OUT(OUT)
-{}IN(IN)
-{}IN(IN)-->{}NAND(NAND)
-{}IN(IN)-->{}NAND(NAND)
+{}IN(IN an input)
+{}IN(IN an input)-->{}OUT(OUT)
+{}IN(IN another input)
+{}IN(IN an input)-->{}NAND(NAND)
+{}IN(IN another input)-->{}NAND(NAND)
 {}NAND(NAND)-->{}OUT(OUT)
 end
-{}INPUT(INPUT)-->{}IN(IN)
+{}INPUT(INPUT)-->{}IN(IN an input)
 {}OUT(OUT)-->{}OUTPUT(OUTPUT)
-{}INPUT(INPUT)-->{}IN(IN)
+{}INPUT(INPUT)-->{}IN(IN another input)
 {}OUT(OUT)-->{}OUTPUT(OUTPUT)",
             cin1.id,
             cin1.id,
@@ -631,8 +641,8 @@ end
         let in1 = Input::UserInput(uin1);
         let uin2 = UserInput::new(&alloc);
         let in2 = Input::UserInput(uin2);
-        let cin1 = ChipInput::new(&alloc, in1);
-        let cin2 = ChipInput::new(&alloc, in2);
+        let cin1 = ChipInput::new(&alloc, in1, "an input".into());
+        let cin2 = ChipInput::new(&alloc, in2, "another input".into());
         let nand = Nand::new(&alloc, Input::ChipInput(&cin1), Input::ChipInput(&cin2));
         let out1 = ChipOutput::new(&alloc, ChipOutputType::NandOutput(nand));
         let out2 = ChipOutput::new(&alloc, ChipOutputType::ChipInput(cin1));
@@ -646,41 +656,49 @@ end
                 MermaidStatement::Line(MermaidLine {
                     from: MermaidNode {
                         identifier: uin1.id,
-                        name: "INPUT",
+                        name: "INPUT".into(),
+                        type_: "INPUT",
                     },
                     to: MermaidNode {
                         identifier: cin1.id,
-                        name: "IN",
+                        name: "IN an input".into(),
+                        type_: "IN",
                     },
                 }),
                 MermaidStatement::Line(MermaidLine {
                     from: MermaidNode {
                         identifier: out1.id,
-                        name: "OUT",
+                        name: "OUT".into(),
+                        type_: "OUT",
                     },
                     to: MermaidNode {
                         identifier: mouts[0].identifier,
-                        name: "OUTPUT",
+                        name: "OUTPUT".into(),
+                        type_: "OUTPUT",
                     },
                 }),
                 MermaidStatement::Line(MermaidLine {
                     from: MermaidNode {
                         identifier: uin2.id,
-                        name: "INPUT",
+                        name: "INPUT".into(),
+                        type_: "INPUT",
                     },
                     to: MermaidNode {
                         identifier: cin2.id,
-                        name: "IN",
+                        name: "IN another input".into(),
+                        type_: "IN",
                     },
                 }),
                 MermaidStatement::Line(MermaidLine {
                     from: MermaidNode {
                         identifier: out2.id,
-                        name: "OUT",
+                        name: "OUT".into(),
+                        type_: "OUT",
                     },
                     to: MermaidNode {
                         identifier: mouts[1].identifier,
-                        name: "OUTPUT",
+                        name: "OUTPUT".into(),
+                        type_: "OUTPUT",
                     },
                 }),
             ]),
@@ -692,50 +710,60 @@ end
                     statements: Vec::from([
                         MermaidStatement::Node(MermaidNode {
                             identifier: cin1.id,
-                            name: "IN",
+                            name: "IN an input".into(),
+                            type_: "IN",
                         }),
                         MermaidStatement::Node(MermaidNode {
                             identifier: cin2.id,
-                            name: "IN",
+                            name: "IN another input".into(),
+                            type_: "IN",
                         }),
                         MermaidStatement::Line(MermaidLine {
                             from: MermaidNode {
                                 identifier: cin1.id,
-                                name: "IN",
+                                name: "IN an input".into(),
+                                type_: "IN",
                             },
                             to: MermaidNode {
                                 identifier: nand.identifier,
-                                name: "NAND",
+                                name: "NAND".into(),
+                                type_: "NAND",
                             },
                         }),
                         MermaidStatement::Line(MermaidLine {
                             from: MermaidNode {
                                 identifier: cin2.id,
-                                name: "IN",
+                                name: "IN another input".into(),
+                                type_: "IN",
                             },
                             to: MermaidNode {
                                 identifier: nand.identifier,
-                                name: "NAND",
+                                name: "NAND".into(),
+                                type_: "NAND",
                             },
                         }),
                         MermaidStatement::Line(MermaidLine {
                             from: MermaidNode {
                                 identifier: nand.identifier,
-                                name: "NAND",
+                                name: "NAND".into(),
+                                type_: "NAND",
                             },
                             to: MermaidNode {
                                 identifier: out1.id,
-                                name: "OUT",
+                                name: "OUT".into(),
+                                type_: "OUT",
                             },
                         }),
                         MermaidStatement::Line(MermaidLine {
                             from: MermaidNode {
                                 identifier: cin1.id,
-                                name: "IN",
+                                name: "IN an input".into(),
+                                type_: "IN",
                             },
                             to: MermaidNode {
                                 identifier: out2.id,
-                                name: "OUT",
+                                name: "OUT".into(),
+                                type_: "OUT",
                             },
                         }),
                     ]),
@@ -783,10 +811,10 @@ end
         let in1 = Input::UserInput(uin1);
         let uin2 = UserInput::new(&alloc);
         let in2 = Input::UserInput(uin2);
-        let c1in1 = ChipInput::new(&alloc, in1);
-        let c1in2 = ChipInput::new(&alloc, in2);
-        let c2in1 = ChipInput::new(&alloc, Input::ChipInput(c1in1));
-        let c2in2 = ChipInput::new(&alloc, Input::ChipInput(c1in2));
+        let c1in1 = ChipInput::new(&alloc, in1, "an input".into());
+        let c1in2 = ChipInput::new(&alloc, in2, "another input".into());
+        let c2in1 = ChipInput::new(&alloc, Input::ChipInput(c1in1), "yet another input".into());
+        let c2in2 = ChipInput::new(&alloc, Input::ChipInput(c1in2), "last input".into());
         let nand = Nand::new(&alloc, Input::ChipInput(&c2in1), Input::ChipInput(&c2in2));
         let c2out = ChipOutput::new(&alloc, ChipOutputType::NandOutput(nand));
         let c1out = ChipOutput::new(
@@ -805,7 +833,7 @@ end
             .statements
             .iter()
             .all(|s| match s {
-                MermaidStatement::Node(x) => x.name == "IN" || x.name == "OUT",
+                MermaidStatement::Node(x) => x.type_ == "IN" || x.type_ == "OUT",
                 MermaidStatement::Line(_) => true,
             });
         assert!(

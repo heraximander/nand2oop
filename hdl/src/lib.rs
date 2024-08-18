@@ -131,14 +131,17 @@ impl Input<'_> {
 pub struct ChipInput<'a> {
     pub in_: Input<'a>,
     pub id: u32,
+    pub label: String, // note that this could instead be a &'static str
+                       // it would make the macros slightly more complex
 }
 
 impl<'a> ChipInput<'a> {
-    pub fn new(alloc: &'a Bump, in_: Input<'a>) -> &'a Self {
+    pub fn new(alloc: &'a Bump, in_: Input<'a>, label: String) -> &'a Self {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         alloc.alloc(ChipInput {
             in_,
             id: COUNTER.fetch_add(1, Ordering::Relaxed),
+            label,
         })
     }
 

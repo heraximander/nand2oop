@@ -72,9 +72,24 @@ pub fn chip(_: TokenStream, item: TokenStream) -> TokenStream {
         .collect::<Punctuated<_, Comma>>();
     let mapped_struct_inputs = input_name_to_type
         .iter()
-        .map(|(arg_name, ty)| match ty {
-            ArgType::Input => quote! {ChipInput::new(&alloc, inputs.#arg_name) },
-            ArgType::InputArray(_) => quote! {inputs.#arg_name.map(|x| ChipInput::new(&alloc, x)) },
+        .map(|(arg_name, ty)| {
+            let name_lit = match *(arg_name.clone()) {
+                syn::Pat::Ident(ident) => LitStr::new(&ident.ident.to_string(), Span::call_site()),
+                _ => panic!("{}", CHIP_ARG_TYPE_ERR),
+            };
+            match ty {
+                ArgType::Input => quote! {ChipInput::new(&alloc, inputs.#arg_name, #name_lit.into()) },
+                ArgType::InputArray(_) => {
+                    quote! {{
+                        let mut i = 0;
+                        inputs.#arg_name.map(|x| {
+                            let ret = ChipInput::new(&alloc, x, #name_lit.to_owned()+&i.to_string());
+                            i += 1;
+                            ret
+                        })
+                    }}
+                }
+            }
         })
         .collect::<Punctuated<_, Comma>>();
     let inputs = input_name_to_type
@@ -88,9 +103,24 @@ pub fn chip(_: TokenStream, item: TokenStream) -> TokenStream {
         .collect::<Punctuated<_, Comma>>();
     let function_params = input_name_to_type
         .iter()
-        .map(|(arg_name, ty)| match ty {
-            ArgType::Input => quote! {ChipInput::new(&alloc, #arg_name) },
-            ArgType::InputArray(_) => quote! {#arg_name.map(|x| ChipInput::new(&alloc, x)) },
+        .map(|(arg_name, ty)| {
+            let name_lit = match *(arg_name.clone()) {
+                syn::Pat::Ident(ident) => LitStr::new(&ident.ident.to_string(), Span::call_site()),
+                _ => panic!("{}", CHIP_ARG_TYPE_ERR),
+            };
+            match ty {
+                ArgType::Input => quote! {ChipInput::new(&alloc, #arg_name, #name_lit.into()) },
+                ArgType::InputArray(_) => {
+                    quote! {{
+                        let mut i = 0;
+                        #arg_name.map(|x| {
+                            let ret = ChipInput::new(&alloc, x, #name_lit.to_owned()+&i.to_string());
+                            i += 1;
+                            ret
+                        })
+                    }}
+                }
+            }
         })
         .collect::<Punctuated<_, Comma>>();
     let function_args = input_name_to_type
