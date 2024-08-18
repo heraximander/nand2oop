@@ -1,6 +1,7 @@
 use std::{
     cell::Cell,
     collections::{HashMap, HashSet},
+    marker::PhantomData,
     sync::atomic::{AtomicU32, Ordering},
 };
 
@@ -40,10 +41,6 @@ mod tests {
 
             fn get_label(&self) -> &'static str {
                 "TestChip"
-            }
-
-            fn get_out_unsized(&'a self, _: &'a Bump) -> &'a [&ChipOutputWrapper] {
-                todo!()
             }
         }
 
@@ -109,10 +106,6 @@ end
 
             fn get_label(&self) -> &'static str {
                 "TestChip"
-            }
-
-            fn get_out_unsized(&'a self, _: &'a Bump) -> &'a [&ChipOutputWrapper] {
-                todo!()
             }
         }
 
@@ -303,24 +296,45 @@ impl MermaidGraph {
 
 // FIXME: work out how to mark struct as non-threadsafe
 // maybe it's already ok - it's not Send, Clone or Copy
-pub struct Machine<'a, const NINPUT: usize, const NOUT: usize> {
+pub struct Machine<
+    'a,
+    TFam: StructuredDataFamily<NINPUT, NOUT>,
+    const NINPUT: usize,
+    const NOUT: usize,
+> {
     inputs: [&'a UserInput; NINPUT],
     outputs: [Output<'a>; NOUT],
     iteration: u8,
+    phantom_data: PhantomData<TFam>,
 }
 
-impl<'a, const NINPUT: usize, const NOUT: usize> Machine<'a, NINPUT, NOUT> {
-    pub fn new<TChip: SizedChip<'a, NOUT>>(
+pub trait StructuredData<T, const NINPUT: usize> {
+    fn from_flat(input: [T; NINPUT]) -> Self;
+    fn to_flat(self) -> [T; NINPUT];
+}
+
+pub trait StructuredDataFamily<const NINPUT: usize, const NOUT: usize> {
+    type StructuredInput<T>: StructuredData<T, NINPUT>;
+    type StructuredOutput<T>: StructuredData<T, NOUT>;
+}
+
+impl<'a, TFam: StructuredDataFamily<NINPUT, NOUT>, const NINPUT: usize, const NOUT: usize>
+    Machine<'a, TFam, NINPUT, NOUT>
+{
+    pub fn new<TChip: SizedChip<'a, TFam, NOUT, NINPUT>>(
         alloc: &'a Bump,
-        new_fn: fn(&'a Bump, [Input<'a>; NINPUT]) -> &'a TChip,
+        new_fn: fn(&'a Bump, TFam::StructuredInput<Input<'a>>) -> &'a TChip,
     ) -> Self {
         let inputs = [0; NINPUT].map(|_| UserInput::new(&alloc));
-        let chip = new_fn(&alloc, inputs.map(|in_| Input::UserInput(in_)));
-        let outputs = chip.get_out(alloc).map(|out| Output::new(out));
+        let input_struct =
+            TFam::StructuredInput::from_flat(inputs.map(|in_| Input::UserInput(in_)));
+        let chip = new_fn(&alloc, input_struct);
+        let outputs = chip.get_out(alloc).to_flat().map(|out| Output::new(out));
         let machine = Machine {
             inputs,
             outputs,
             iteration: 0,
+            phantom_data: PhantomData,
         };
         machine
     }
@@ -330,8 +344,9 @@ impl<'a, const NINPUT: usize, const NOUT: usize> Machine<'a, NINPUT, NOUT> {
         graph_map.compile()
     }
 
-    pub fn process(&mut self, input_vals: [bool; NINPUT]) -> [bool; NOUT] {
-        for (in_, val) in self.inputs.iter().zip(input_vals) {
+    pub fn process(&mut self, input: TFam::StructuredInput<bool>) -> TFam::StructuredOutput<bool> {
+        let flat_input = input.to_flat();
+        for (in_, val) in self.inputs.iter().zip(flat_input) {
             in_.set(val);
         }
         self.iteration += 1;
@@ -339,7 +354,7 @@ impl<'a, const NINPUT: usize, const NOUT: usize> Machine<'a, NINPUT, NOUT> {
         for (i, out) in (&self.outputs).iter().enumerate() {
             res[i] = out.output.process(self.iteration);
         }
-        res
+        TFam::StructuredOutput::from_flat(res)
     }
 }
 
@@ -527,11 +542,21 @@ pub struct ChipOutputWrapper<'a> {
 pub trait Chip<'a> {
     fn get_id(&self) -> String;
     fn get_label(&self) -> &'static str;
-    fn get_out_unsized(&'a self, alloc: &'a Bump) -> &'a [&ChipOutputWrapper];
 }
 
-pub trait SizedChip<'a, const NOUT: usize>: Chip<'a> {
-    fn get_out(&self, alloc: &'a Bump) -> [&'a ChipOutputWrapper; NOUT];
+// SizedChip requires knowledge of input and output sizes. If we folded this trait in
+// to Chip, then each node of the chip graph would need to know the sizes of the chips
+// feeding in to it. This gave me a lot of problems, and as we only need `::get_out()`
+// when constructing chips when we know the concrete type of the chip anyway, I decided
+// to split the functionality in to two traits
+pub trait SizedChip<
+    'a,
+    TDataFam: StructuredDataFamily<NINPUT, NOUT>,
+    const NOUT: usize,
+    const NINPUT: usize,
+>: Chip<'a>
+{
+    fn get_out(&self, alloc: &'a Bump) -> TDataFam::StructuredOutput<&'a ChipOutputWrapper>;
 }
 
 impl<'a> ChipOutput<'a> {
