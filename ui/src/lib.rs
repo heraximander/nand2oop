@@ -87,25 +87,33 @@ fn graph_outputs(outs: &[Output]) -> MermaidGraph {
     let mut graph_map = MermaidGraph::new("", "".into());
     let mut node_set = HashSet::new();
     for out in outs.iter().rev() {
-        graph_output(out, &mut graph_map, vec![], &mut node_set);
+        graph_output(
+            out,
+            &mut GraphInputs {
+                graph_map: &mut graph_map,
+                path: vec![],
+                node_set: &mut node_set,
+            },
+        );
     }
     graph_map
 }
 
-fn graph_output(
-    out: &Output<'_>,
-    graph_map: &mut MermaidGraph,
-    path: Vec<String>,
-    node_set: &mut HashSet<String>,
-) {
-    let node = graph_output_wrapper(out.output, graph_map, path, node_set);
-    graph_map.statements.push(MermaidLine {
+fn graph_output(out: &Output<'_>, graph_inputs: &mut GraphInputs<'_>) {
+    let node = graph_output_wrapper(out.output, graph_inputs);
+    graph_inputs.graph_map.statements.push(MermaidLine {
         from: node,
         to: MermaidNode {
             identifier: out.identifier,
             name: "OUTPUT",
         },
     });
+}
+
+struct GraphInputs<'a> {
+    graph_map: &'a mut MermaidGraph,
+    path: Vec<String>,
+    node_set: &'a mut HashSet<String>,
 }
 
 fn graph_user_input(in_: &UserInput, node_set: &mut HashSet<String>) -> MermaidNode {
@@ -122,42 +130,39 @@ fn graph_user_input(in_: &UserInput, node_set: &mut HashSet<String>) -> MermaidN
     node
 }
 
-fn graph_input(
-    in_: Input<'_>,
-    graph_map: &mut MermaidGraph,
-    path: Vec<String>,
-    node_set: &mut HashSet<String>,
-) -> MermaidNode {
+fn graph_input(in_: Input<'_>, graph_inputs: &mut GraphInputs<'_>) -> MermaidNode {
     match in_ {
-        Input::UserInput(x) => graph_user_input(x, node_set),
-        Input::ChipOutput(x) => graph_output_wrapper(x, graph_map, path, node_set),
-        Input::ChipInput(x) => graph_chip_input(x, graph_map, path, node_set),
-        Input::NandInput(x) => graph_nand(x, graph_map, path, node_set),
+        Input::UserInput(x) => graph_user_input(x, graph_inputs.node_set),
+        Input::ChipOutput(x) => graph_output_wrapper(x, graph_inputs),
+        Input::ChipInput(x) => graph_chip_input(x, graph_inputs),
+        Input::NandInput(x) => graph_nand(x, graph_inputs),
     }
 }
 
-fn graph_chip_input(
-    in_: &ChipInput<'_>,
-    graph_map: &mut MermaidGraph,
-    path: Vec<String>,
-    node_set: &mut HashSet<String>,
-) -> MermaidNode {
+fn graph_chip_input(in_: &ChipInput<'_>, graph_inputs: &mut GraphInputs<'_>) -> MermaidNode {
     let node = MermaidNode {
         identifier: in_.id,
         name: "IN",
     };
 
     // make sure we haven't already expanded this node
-    if node_set.contains(&node.get_label()) {
+    if graph_inputs.node_set.contains(&node.get_label()) {
         return node;
     }
-    node_set.insert(node.get_label());
+    graph_inputs.node_set.insert(node.get_label());
 
-    let mut new_path = path.clone();
+    let mut new_path = graph_inputs.path.clone();
     new_path.pop();
-    let prev_node = graph_input(in_.in_, graph_map, new_path.clone(), node_set);
+    let prev_node = graph_input(
+        in_.in_,
+        &mut GraphInputs {
+            graph_map: graph_inputs.graph_map,
+            path: new_path.clone(),
+            node_set: graph_inputs.node_set,
+        },
+    );
 
-    let current_graph = graph_map.get_subgraph(&new_path);
+    let current_graph = graph_inputs.graph_map.get_subgraph(&new_path);
     current_graph.statements.push(MermaidLine {
         from: prev_node,
         to: node,
@@ -167,11 +172,9 @@ fn graph_chip_input(
 
 fn graph_output_wrapper(
     out: &ChipOutputWrapper<'_>,
-    graph_map: &mut MermaidGraph,
-    path: Vec<String>,
-    node_set: &mut HashSet<String>,
+    graph_inputs: &mut GraphInputs<'_>,
 ) -> MermaidNode {
-    let current_graph = graph_map.get_subgraph(&path); // TODO: this is a bit crap
+    let current_graph = graph_inputs.graph_map.get_subgraph(&graph_inputs.path); // TODO: this is a bit crap
 
     // graph the current component
     let node = MermaidNode {
@@ -180,10 +183,10 @@ fn graph_output_wrapper(
     };
 
     // make sure we haven't already expanded this node
-    if node_set.contains(&node.get_label()) {
+    if graph_inputs.node_set.contains(&node.get_label()) {
         return node;
     }
-    node_set.insert(node.get_label());
+    graph_inputs.node_set.insert(node.get_label());
 
     // get a new subgraph because we're at a chip boundary
     let graph_id = out.parent.get_id();
@@ -192,22 +195,39 @@ fn graph_output_wrapper(
         let subgraph = MermaidGraph::new(out.parent.get_label(), graph_id.clone());
         current_graph.subgraphs.insert(graph_id.clone(), subgraph);
     }
-    let mut new_path = path.clone();
+    let mut new_path = graph_inputs.path.clone();
     new_path.push(new_graph_name);
 
     // recursively graph the input components
     let prev_node = match out.inner.out {
-        ChipOutputType::ChipOutput(out) => {
-            graph_output_wrapper(out, graph_map, new_path.clone(), node_set)
-        }
-        ChipOutputType::NandOutput(nand) => graph_nand(nand, graph_map, new_path.clone(), node_set),
-        ChipOutputType::ChipInput(in_) => {
-            graph_chip_input(in_, graph_map, new_path.clone(), node_set)
-        }
+        ChipOutputType::ChipOutput(out) => graph_output_wrapper(
+            out,
+            &mut GraphInputs {
+                graph_map: graph_inputs.graph_map,
+                path: new_path.clone(),
+                node_set: graph_inputs.node_set,
+            },
+        ),
+        ChipOutputType::NandOutput(nand) => graph_nand(
+            nand,
+            &mut GraphInputs {
+                graph_map: graph_inputs.graph_map,
+                path: new_path.clone(),
+                node_set: graph_inputs.node_set,
+            },
+        ),
+        ChipOutputType::ChipInput(in_) => graph_chip_input(
+            in_,
+            &mut GraphInputs {
+                graph_map: graph_inputs.graph_map,
+                path: new_path.clone(),
+                node_set: graph_inputs.node_set,
+            },
+        ),
     };
 
     // add line between this node and the previous
-    let subgraph = graph_map.get_subgraph(&new_path);
+    let subgraph = graph_inputs.graph_map.get_subgraph(&new_path);
     subgraph.statements.push(MermaidLine {
         from: prev_node,
         to: node,
@@ -216,26 +236,35 @@ fn graph_output_wrapper(
     node
 }
 
-fn graph_nand(
-    nand: &Nand<'_>,
-    graph_map: &mut MermaidGraph,
-    path: Vec<String>,
-    node_set: &mut HashSet<String>,
-) -> MermaidNode {
+fn graph_nand(nand: &Nand<'_>, graph_inputs: &mut GraphInputs<'_>) -> MermaidNode {
     // make sure we haven't already expanded this node
     let node = MermaidNode {
         identifier: nand.identifier,
         name: "NAND",
     };
-    if node_set.contains(&node.get_label()) {
+    if graph_inputs.node_set.contains(&node.get_label()) {
         return node;
     }
-    node_set.insert(node.get_label());
+    graph_inputs.node_set.insert(node.get_label());
 
-    let from_node_1 = graph_input(nand.in1, graph_map, path.clone(), node_set);
-    let from_node_2 = graph_input(nand.in2, graph_map, path.clone(), node_set);
+    let from_node_1 = graph_input(
+        nand.in1,
+        &mut GraphInputs {
+            graph_map: graph_inputs.graph_map,
+            path: graph_inputs.path.clone(),
+            node_set: graph_inputs.node_set,
+        },
+    );
+    let from_node_2 = graph_input(
+        nand.in2,
+        &mut GraphInputs {
+            graph_map: graph_inputs.graph_map,
+            path: graph_inputs.path.clone(),
+            node_set: graph_inputs.node_set,
+        },
+    );
 
-    let current_graph = graph_map.get_subgraph(&path);
+    let current_graph = graph_inputs.graph_map.get_subgraph(&graph_inputs.path);
     current_graph.statements.push(MermaidLine {
         from: from_node_1,
         to: node,
