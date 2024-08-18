@@ -2,7 +2,8 @@ use std::{array, iter};
 
 use bumpalo::Bump;
 use hdl::{
-    ArrayInto, ChipInput, ChipOutput, ChipOutputType, Input, Machine, Nand, SizedChip, UserInput,
+    create_subchip, ArrayInto, ChipInput, ChipOutput, ChipOutputType, Input, Machine, Nand,
+    NandInputs, SizedChip, UserInput,
 };
 use hdl_macro::{chip, StructuredData};
 
@@ -391,12 +392,68 @@ fn alu<'a>(
     }
 }
 
+#[derive(StructuredData, PartialEq, Debug)]
+struct SRLatchOutput<T> {
+    q: T,
+    nq: T,
+}
+
+#[chip]
+fn srlatch<'a>(
+    alloc: &'a Bump,
+    s: &'a ChipInput<'a>,
+    r: &'a ChipInput<'a>,
+) -> SRLatchOutput<ChipOutputType<'a>> {
+    let (cross_nand_1, cross_nand_2): (&Nand, &Nand) = create_subchip(
+        alloc,
+        &|(nandchip,)| NandInputs {
+            in1: s.into(),
+            in2: nandchip.into(),
+        },
+        &|(nandchip,)| NandInputs {
+            in1: r.into(),
+            in2: nandchip.into(),
+        },
+    );
+
+    SRLatchOutput {
+        q: cross_nand_1.into(),
+        nq: cross_nand_2.into(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use bumpalo::Bump;
     use hdl::Machine;
 
     use crate::*;
+
+    #[test]
+    fn srlatch_has_correct_truth_table() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Srlatch::from);
+        let res1 = machine.process(SrlatchInputs { s: false, r: true });
+        assert_eq!(res1.q, true);
+        let res2 = machine.process(SrlatchInputs { s: true, r: true });
+        assert_eq!(res2.q, true);
+        let res3 = machine.process(SrlatchInputs { s: true, r: false });
+        assert_eq!(res3.q, false);
+        let res4 = machine.process(SrlatchInputs { s: true, r: true });
+        assert_eq!(res4.q, false);
+    }
+
+    #[test]
+    fn srlatch_has_stable_output_if_input_is_valid() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Srlatch::from);
+        let res1 = machine.process(SrlatchInputs { s: false, r: true });
+        assert_eq!(res1.q, true);
+        let res2 = machine.process(SrlatchInputs { s: true, r: true });
+        assert_eq!(res2.q, true);
+        let res4 = machine.process(SrlatchInputs { s: true, r: true });
+        assert_eq!(res4.q, true);
+    }
 
     #[test]
     fn alu_chip_has_correct_truth_table() {
@@ -1619,6 +1676,6 @@ mod tests {
 
 fn main() {
     let alloc = Bump::new();
-    let machine = Machine::new(&alloc, Alu::from);
+    let machine = Machine::new(&alloc, Srlatch::from);
     ui::start_interactive_server(&machine, 3000);
 }
