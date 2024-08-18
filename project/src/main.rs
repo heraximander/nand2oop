@@ -461,12 +461,118 @@ fn dflipflop<'a>(
     }
 }
 
+#[chip]
+fn bit<'a>(
+    alloc: &'a Bump,
+    in_: &'a ChipInput<'a>,
+    load: &'a ChipInput<'a>,
+    clock: &'a ChipInput<'a>,
+) -> UnaryChipOutput<ChipOutputType<'a>> {
+    let (dff, _): (&Dflipflop, &Mux) = create_subchip(
+        alloc,
+        &|(mux,)| DflipflopInputs {
+            data: mux.get_out(alloc).out.into(),
+            clock: clock.into(),
+        },
+        &|(dff,)| MuxInputs {
+            in1: dff.get_out(alloc).q.into(),
+            in2: in_.into(),
+            sel: load.into(),
+        },
+    );
+    UnaryChipOutput {
+        out: dff.get_out(alloc).q.into(),
+    }
+}
+
+#[chip]
+fn register16<'a>(
+    alloc: &'a Bump,
+    in_: [&'a ChipInput<'a>; 16],
+    load: &'a ChipInput<'a>,
+    clock: &'a ChipInput<'a>,
+) -> ArrayLen16<ChipOutputType<'a>> {
+    let out = in_.map(|elem| {
+        Bit::new(alloc, elem.into(), load.into(), clock.into())
+            .get_out(alloc)
+            .out
+            .into()
+    });
+    ArrayLen16 { out }
+}
+
 #[cfg(test)]
 mod tests {
     use bumpalo::Bump;
     use hdl::Machine;
 
     use crate::*;
+
+    #[test]
+    fn register16_has_correct_truth_table() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Register16::from);
+        let res = machine.process(Register16Inputs {
+            in_: [true; 16],
+            load: true,
+            clock: true,
+        }); // initial state
+        assert_eq!(res.out, [false; 16]);
+        let res = machine.process(Register16Inputs {
+            in_: [false; 16],
+            load: true,
+            clock: false,
+        }); // tock
+        assert_eq!(res.out, [true; 16]);
+    }
+
+    #[test]
+    fn bit_has_correct_truth_table() {
+        let alloc = Bump::new();
+        let mut machine = Machine::new(&alloc, Bit::from);
+        let res = machine.process(BitInputs {
+            in_: true,
+            load: true,
+            clock: true,
+        }); // initial state
+        assert_eq!(res.out, false);
+        let res = machine.process(BitInputs {
+            in_: true,
+            load: true,
+            clock: false,
+        }); // tock
+        assert_eq!(res.out, true);
+        let res = machine.process(BitInputs {
+            in_: true,
+            load: true,
+            clock: false,
+        }); // same tock
+        assert_eq!(res.out, true);
+        let res = machine.process(BitInputs {
+            in_: false,
+            load: false,
+            clock: true,
+        }); // tick
+        assert_eq!(res.out, true);
+        let res = machine.process(BitInputs {
+            in_: false,
+            load: false,
+            clock: false,
+        }); // tock
+        assert_eq!(res.out, true);
+        let res = machine.process(BitInputs {
+            in_: false,
+            load: true,
+            clock: true,
+        }); // tick
+        assert_eq!(res.out, true);
+        let res = machine.process(BitInputs {
+            in_: false,
+            load: true,
+            clock: false,
+        }); // tock
+        assert_eq!(res.out, false);
+    }
 
     #[test]
     fn dflipflop_has_correct_truth_table() {
