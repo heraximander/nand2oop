@@ -71,10 +71,8 @@ mod tests {
 
     #[test]
     fn xor_gate_has_correct_truth_table() {
-        // FIXME: this graph looks a bit fucked up
         let alloc = Bump::new();
         let mut machine = Machine::new(&alloc, Xor::new);
-        print!("{}",machine.graph());
         assert_eq!(machine.process([true,true]), [false]);
         assert_eq!(machine.process([true,false]), [true]);
         assert_eq!(machine.process([false,true]), [true]);
