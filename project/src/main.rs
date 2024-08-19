@@ -759,8 +759,7 @@ fn ram64<'a>(
     load: &'a ChipInput<'a>,
     clock: &'a ChipInput<'a>,
 ) -> ArrayLen16<ChipOutputType<'a>> {
-    let this_addr = from_fn(|i| address[i]);
-    let remaining_addr = from_fn(|i| address[i + 3]);
+    let (this_addr, remaining_addr) = split_2(&address);
     let demux = Demux1x8::new(alloc, load.into(), this_addr.ainto());
     let dmxo = demux.get_out(alloc);
 
@@ -847,8 +846,7 @@ fn ram512<'a>(
     load: &'a ChipInput<'a>,
     clock: &'a ChipInput<'a>,
 ) -> ArrayLen16<ChipOutputType<'a>> {
-    let this_addr = from_fn(|i| address[i]);
-    let remaining_addr = from_fn(|i| address[i + 3]);
+    let (this_addr, remaining_addr) = split_2(&address);
     let demux = Demux1x8::new(alloc, load.into(), this_addr.ainto());
     let dmxo = demux.get_out(alloc);
 
@@ -927,41 +925,52 @@ fn ram512<'a>(
     }
 }
 
+fn split_2<'a, T: Copy, const NARR: usize, const N1: usize, const N2: usize>(
+    arr: &'a [T; NARR],
+) -> ([T; N1], [T; N2]) {
+    const {
+        assert!(
+            NARR == N1 + N2,
+            "Split sections of the array must sum to total array length"
+        );
+    };
+    (from_fn(|i| arr[i]), from_fn(|i| arr[i + N1]))
+}
+
 #[chip]
 fn ram16k<'a>(
     alloc: &'a Bump,
     in_: [&'a ChipInput<'a>; 16],
-    address: [&'a ChipInput<'a>; 12],
+    address: [&'a ChipInput<'a>; 14],
     load: &'a ChipInput<'a>,
     clock: &'a ChipInput<'a>,
 ) -> ArrayLen16<ChipOutputType<'a>> {
-    let this_addr = from_fn(|i| address[i]);
-    let remaining_addr = from_fn(|i| address[i + 3]);
+    let (this_addr, remaining_addr) = split_2(&address);
     let demux = Demux1x4::new(alloc, load.into(), this_addr.ainto());
     let dmxo = demux.get_out(alloc);
 
-    let reg1 = Ram512::new(
+    let reg1 = Ram4k::new(
         alloc,
         in_.ainto(),
         remaining_addr.ainto(),
         dmxo.out1.into(),
         clock.into(),
     );
-    let reg2 = Ram512::new(
+    let reg2 = Ram4k::new(
         alloc,
         in_.ainto(),
         remaining_addr.ainto(),
         dmxo.out2.into(),
         clock.into(),
     );
-    let reg3 = Ram512::new(
+    let reg3 = Ram4k::new(
         alloc,
         in_.ainto(),
         remaining_addr.ainto(),
         dmxo.out3.into(),
         clock.into(),
     );
-    let reg4 = Ram512::new(
+    let reg4 = Ram4k::new(
         alloc,
         in_.ainto(),
         remaining_addr.ainto(),
@@ -1148,6 +1157,13 @@ mod tests {
     }
 
     #[test]
+    fn when_split_2_is_passed_consistent_const_vars_the_array_is_divided_with_no_remainder() {
+        let (sub1, sub2): ([u32; 3], [u32; 2]) = split_2(&[1, 2, 3, 4, 5]);
+        assert_eq!(sub1, [1, 2, 3]);
+        assert_eq!(sub2, [4, 5]);
+    }
+
+    #[test]
     fn counter16_has_correct_truth_table() {
         let alloc = Bump::new();
         let mut machine = Machine::new(&alloc, Counter16::from);
@@ -1229,16 +1245,16 @@ mod tests {
     #[test]
     fn ram16k_when_a_value_is_stored_it_can_be_retrieved_again() {
         let alloc = Bump::new();
-        let mut machine = Machine::new(&alloc, Ram512::from);
+        let mut machine = Machine::new(&alloc, Ram16k::from);
         let number = ntb(1092);
-        let out = machine.process(Ram512Inputs {
+        let out = machine.process(Ram16kInputs {
             in_: number,
             address: ntb(13987),
             load: true,
             clock: true,
         }); // tick
         assert_eq!(out.out, [false; 16]);
-        let out = machine.process(Ram512Inputs {
+        let out = machine.process(Ram16kInputs {
             in_: [false; 16],
             address: ntb(13987),
             load: false,
